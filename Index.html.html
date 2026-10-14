@@ -1,0 +1,1866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Employee Attendance Tracker</title>
+<style>
+:root{--bg:#f5f7fb;--card:#ffffff;--text:#1d2433;--muted:#6b7385;--border:#e3e7ef;--accent:#4f46e5;--P:#16a34a;--A:#dc2626;--L:#d97706;--V:#f97316}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0f1420;--card:#1a2130;--text:#e6e9f2;--muted:#9aa3b8;--border:#2a3345}}
+:root[data-theme="dark"]{--bg:#0f1420;--card:#1a2130;--text:#e6e9f2;--muted:#9aa3b8;--border:#2a3345}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background-color:var(--bg);background-image:linear-gradient(135deg,rgba(79,70,229,.12),rgba(14,165,233,.07) 50%,rgba(16,185,129,.09)),url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cpath d='M48 0H0V48' fill='none' stroke='%2394a3b8' stroke-opacity='.22'/%3E%3C/svg%3E");background-attachment:fixed;color:var(--text);min-height:100vh}
+header{background:var(--accent);color:#fff;padding:16px 20px;padding-top:calc(16px + env(safe-area-inset-top,0px))}
+header{display:flex;align-items:center}
+header h1{margin:0;font-size:20px}
+.logo{height:40px;max-width:160px;object-fit:contain;margin-right:12px;background:#fff;border-radius:6px;padding:3px}
+nav{display:flex;gap:6px;padding:10px 20px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--card)}
+nav button{padding:8px 14px;border:none;border-radius:8px;background:none;color:var(--muted);cursor:pointer;font:inherit}
+nav button.active{background:var(--accent);color:#fff}
+main{padding:20px;max-width:1100px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px}
+.stat .n{font-size:24px;font-weight:600}
+.stat .l{font-size:13px;color:var(--muted)}
+.wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--border);font-size:14px;vertical-align:middle}
+th{color:var(--muted);font-weight:500;font-size:13px}
+tr.click{cursor:pointer}
+tr.click:hover{background:var(--bg)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+input,select{padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:inherit}
+.btn{padding:8px 14px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font:inherit}
+.btn.ghost{background:none;color:var(--text);border:1px solid var(--border)}
+.btn.danger{background:var(--A)}
+.muted{color:var(--muted);font-size:13px}
+.st{display:flex;gap:4px;flex-wrap:wrap}
+.st button{border:1px solid var(--border);background:none;color:var(--muted);padding:5px 9px;border-radius:6px;cursor:pointer;font-size:12px}
+.st button.on-P{background:var(--P);border-color:var(--P);color:#fff}
+.st button.on-A{background:var(--A);border-color:var(--A);color:#fff}
+.st button.on-L{background:var(--L);border-color:var(--L);color:#fff}
+.st button.on-V{background:var(--V);border-color:var(--V);color:#fff}
+.st button.on-H{background:#0891b2;border-color:#0891b2;color:#fff}
+.st button.on-O{background:#7c3aed;border-color:#7c3aed;color:#fff}
+.bar{height:8px;background:var(--border);border-radius:4px;overflow:hidden;min-width:80px}
+.bar i{display:block;height:100%;background:var(--P)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;color:#fff}
+h2{font-size:17px;margin:4px 0 12px}
+@media (max-width:600px){main{padding:14px}}
+.globe{width:44px;height:44px;flex:0 0 44px;margin:0 12px 0 auto;filter:drop-shadow(0 4px 6px rgba(0,0,0,.25))}
+.globe svg{width:100%;height:100%;display:block}
+.globe-lines{animation:globeSpin 5s linear infinite}
+@keyframes globeSpin{from{transform:translateX(0)}to{transform:translateX(-14px)}}
+@media (prefers-reduced-motion: reduce){.globe-lines{animation:none}}
+</style>
+</head>
+<body>
+<header id="hdr"></header>
+<nav id="nav"></nav>
+<main id="app"></main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+const KEY = 'attendance-tracker-v1';
+const STATUS = {
+  V: {label: 'Leave',   color: 'var(--V)'},
+  H: {label: 'Work from home', color: '#0891b2'},
+  O: {label: 'Work from office', color: '#7c3aed'}
+};
+const TABS = [['daily', 'Daily attendance'], ['dash', 'Employee dashboard'], ['weekly', 'Weekly attendance'], ['analytics', 'Attendance analytics'], ['folders', 'Attendance folders'], ['emps', 'Employees'], ['report', 'RTW Compliance'], ['access', 'Roles and access']];
+const ROLES = {
+  Admin: {desc: 'Full control: mark attendance, manage employees, import lists, and view access.', perms: ['mark', 'dashboard', 'manage', 'import', 'users', 'access']},
+  Manager: {desc: 'Marks daily attendance and reviews dashboards and summaries.', perms: ['mark', 'dashboard', 'access']},
+  Viewer: {desc: 'Read-only access to dashboards and the employee list.', perms: ['dashboard', 'access']},
+  Employee: {desc: 'Marks your own attendance and views only your own report.', perms: ['markSelf', 'dashboardSelf', 'access']}
+};
+const PERMS = [['mark', 'Mark daily attendance'], ['dashboard', 'View dashboard and summaries'], ['manage', 'Add or remove employees'], ['import', 'Import employees from Excel'], ['users', 'Manage user accounts and logins'], ['markSelf', 'Mark own attendance'], ['dashboardSelf', 'View own report only'], ['access', 'View roles and access']];
+let currentRole = null;
+let session = null;
+let authView = 'signin';
+let newCode = null;
+let pendingUser = null;
+
+function can(p){ return !!currentRole && ROLES[currentRole].perms.includes(p); }
+
+let db = null;
+let tab = 'daily';
+let date = todayStr();
+let month = todayStr().slice(0, 7);
+let selEmp = null;
+
+function uid(){ return Math.random().toString(36).slice(2, 10); }
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function ymd(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function todayStr(){ return ymd(new Date()); }
+
+function load(){
+  try { db = JSON.parse(localStorage.getItem(KEY)); } catch (e) { db = null; }
+  if (!db || !Array.isArray(db.employees)) {
+    db = {
+      employees: [
+        {id: uid(), name: 'Asha Rao', dept: 'Engineering'},
+        {id: uid(), name: 'Ravi Kumar', dept: 'Sales'},
+        {id: uid(), name: 'Meera Iyer', dept: 'HR'}
+      ],
+      records: {}
+    };
+    save();
+  }
+  if (!db.records) db.records = {};
+  if (!db.users) db.users = [];
+  if (!db.branding) db.branding = {};
+  if (!db.holidays) db.holidays = {};
+  Object.values(db.records).forEach(day => Object.keys(day).forEach(id => { if (day[id] === 'P' || day[id] === 'L' || day[id] === 'A' || day[id] === 'X') delete day[id]; }));
+}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {} }
+
+function go(t){ tab = t; if (t !== 'dash') selEmp = null; render(); }
+
+function setStatus(day, empId, status){
+  if (proxyEmpId) { if (empId !== proxyEmpId || !weekDays().includes(day)) return; }
+  else if (!can('mark') && !(can('markSelf') && session.empId === empId && weekDays().includes(day))) return;
+  db.records[day] = db.records[day] || {};
+  if (db.records[day][empId] === status) delete db.records[day][empId];
+  else db.records[day][empId] = status;
+  save(); render();
+}
+
+function markAll(){
+  if (!can('mark')) return;
+  if (!db.employees.length) return;
+  db.records[date] = db.records[date] || {};
+  db.employees.forEach(e => { if (!db.records[date][e.id]) db.records[date][e.id] = 'O'; });
+  save(); render();
+}
+
+function addEmp(){
+  if (!can('manage')) return;
+  const name = document.getElementById('n-name').value.trim();
+  const dept = document.getElementById('n-dept').value.trim() || 'General';
+  const email = document.getElementById('n-email').value.trim();
+  if (!name) return;
+  db.employees.push({id: uid(), name, dept, email});
+  save(); render();
+}
+
+function removeEmp(id){
+  if (!can('manage')) return;
+  const emp = db.employees.find(e => e.id === id);
+  if (!emp || !confirm('Remove ' + emp.name + ' and all their attendance records?')) return;
+  db.employees = db.employees.filter(e => e.id !== id);
+  Object.values(db.records).forEach(day => delete day[id]);
+  if (selEmp === id) selEmp = null;
+  save(); render();
+}
+
+function daysOf(m){
+  const [y, mo] = m.split('-').map(Number);
+  const n = new Date(y, mo, 0).getDate();
+  const out = [];
+  for (let d = 1; d <= n; d++) out.push(y + '-' + String(mo).padStart(2,'0') + '-' + String(d).padStart(2,'0'));
+  return out;
+}
+
+// Days counted for summaries: within the chosen month and not in the future
+function pastDays(m){ const t = todayStr(); return daysOf(m).filter(d => d <= t && !db.holidays[d]); }
+
+function stats(empId, days, key = period){
+  const c = {H:0, O:0, V:0, U:0};
+  days.forEach(d => {
+    const s = (db.records[d] || {})[empId];
+    if (s) c[s]++; else c.U++;
+  });
+  c.rate = rateFor(key, c, days);
+  return c;
+}
+
+function badge(k){
+  if (!k) return '<span class="muted">Not marked</span>';
+  return '<span class="badge" style="background:' + STATUS[k].color + '">' + STATUS[k].label + '</span>';
+}
+
+function nav(){
+  const pName = proxyEmpId ? ((db.employees.find(e => e.id === proxyEmpId) || {}).name || 'employee') : '';
+  const roleSel = proxyEmpId
+    ? '<div style="margin-left:auto;display:flex;align-items:center;gap:8px"><span class="badge" style="background:var(--L)">Viewing as ' + esc(pName) + '</span><button class="btn ghost" onclick="exitProxy()">Exit view</button></div>'
+    : '<div style="margin-left:auto;display:flex;align-items:center;gap:8px"><span class="muted">' + esc(session.name) + ' (' + currentRole + ')</span><button class="btn ghost" onclick="signOut()">Sign out</button></div>';
+  document.getElementById('nav').innerHTML = TABS.filter(([k]) => tabVisible(k)).map(([k, l]) =>
+    '<button class="' + (tab === k ? 'active' : '') + '" onclick="go(\'' + k + '\')">' + l + '</button>'
+  ).join('') + roleSel;
+}
+
+function setRole(r){ currentRole = r; render(); }
+
+/* ---------- Daily attendance ---------- */
+function viewDaily(){
+  if (isSelfView()) return viewSelfWeek();
+  const recs = db.records[date] || {};
+  const counts = {H:0, O:0, V:0, U:0};
+  db.employees.forEach(e => { const s = recs[e.id]; if (s) counts[s]++; else counts.U++; });
+
+  let html = '<div class="row"><label class="muted">Date</label>' +
+    '<input type="date" value="' + date + '" onchange="date=this.value;render()">' +
+    '<button class="btn ghost" onclick="date=todayStr();render()">Today</button>' +
+    (can('mark') ? '<button class="btn" onclick="markAll()">Mark all work from office</button>' : '') + '</div>';
+
+  html += '<div class="grid">' +
+    ['H','O','V','U'].map(k => '<div class="stat"><div class="n" style="color:' + (STATUS[k] ? STATUS[k].color : 'var(--muted)') + '">' + counts[k] + '</div><div class="l">' + (STATUS[k] ? STATUS[k].label : 'Not marked') + '</div></div>').join('') +
+    '</div>';
+
+  if (!db.employees.length) {
+    html += '<div class="card muted">No employees yet. Add some in the Employees tab.</div>';
+  } else {
+    html += '<div class="card wrap"><table><thead><tr><th>Employee</th><th>Department</th><th>Status</th></tr></thead><tbody>' +
+      db.employees.map(e => {
+        const cur = recs[e.id];
+        const btns = Object.keys(STATUS).map(k =>
+          '<button class="' + (cur === k ? 'on-' + k : '') + '" onclick="setStatus(\'' + date + '\',\'' + e.id + '\',\'' + k + '\')">' + STATUS[k].label + '</button>'
+        ).join('');
+        return '<tr><td>' + esc(e.name) + '</td><td class="muted">' + esc(e.dept) + '</td><td>' + (can('mark') ? '<div class="st">' + btns + '</div>' : badge(cur)) + '</td></tr>';
+      }).join('') +
+      '</tbody></table></div>';
+    html += '<p class="muted">Click a selected status again to clear it.</p>';
+    html += attendanceImportCard();
+    html += reminderCard();
+  }
+  document.getElementById('app').innerHTML = html;
+}
+
+/* ---------- Employee dashboard ---------- */
+function viewDash(){
+  if (isSelfView()) return viewSelfDash();
+  const days = periodDays();
+  let html = periodControls();
+
+  if (selEmp && db.employees.some(e => e.id === selEmp)) {
+    html += empDetail(selEmp, days);
+  } else {
+    selEmp = null;
+    const rows = db.employees.map(e => ({e, s: stats(e.id, days)}));
+    const rates = rows.map(r => r.s.rate).filter(r => r !== null);
+    const avg = rates.length ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) + '%' : '—';
+    const totalAbs = rows.reduce((a, r) => a + r.s.V, 0);
+    html += '<div class="grid">' +
+      '<div class="stat"><div class="n">' + db.employees.length + '</div><div class="l">Employees</div></div>' +
+      '<div class="stat"><div class="n">' + avg + '</div><div class="l">Average attendance</div></div>' +
+      '<div class="stat"><div class="n">' + totalAbs + '</div><div class="l">Total leaves</div></div>' +
+      '<div class="stat"><div class="n">' + days.length + '</div><div class="l">Days counted</div></div>' +
+      '</div>';
+
+    if (!db.employees.length) {
+      html += '<div class="card muted">No employees yet. Add some in the Employees tab.</div>';
+    } else {
+      if (period === 'quarter') html += quarterCard();
+      html += '<div class="card wrap"><h2>Employee summary</h2><table><thead><tr>' +
+        '<th>Employee</th><th>Dept</th><th>WFH</th><th>WFO</th><th>Leave</th><th>Attendance</th><th>Weeks meeting min WFO</th></tr></thead><tbody>' +
+        rows.map(({e, s}) =>
+          '<tr class="click" onclick="selEmp=\'' + e.id + '\';render()">' +
+          '<td>' + esc(e.name) + '</td><td class="muted">' + esc(e.dept) + '</td>' +
+          '<td>' + s.H + '</td><td>' + s.O + '</td><td>' + s.V + '</td>' +
+          '<td><div class="row" style="margin:0;flex-wrap:nowrap"><div class="bar" style="flex:1"><i style="width:' + (s.rate || 0) + '%"></i></div>' +
+          '<span style="min-width:44px">' + (s.rate === null ? '—' : s.rate + '%') + '</span></div></td><td>' + weekCell(e.id) + '</td></tr>'
+        ).join('') +
+        '</tbody></table></div>';
+      html += '<p class="muted">' + formulaSummary() + ' Click a row for details.</p>';
+    }
+  }
+  document.getElementById('app').innerHTML = html;
+}
+
+function empDetail(id, days){
+  const emp = db.employees.find(e => e.id === id);
+  const s = stats(id, days);
+  const rate = s.rate === null ? '—' : s.rate + '%';
+  let html = (can('dashboard') ? '<div class="row"><button class="btn ghost" onclick="selEmp=null;render()">← All employees</button></div>' : '') +
+    '<div class="card"><h2 style="margin-bottom:2px">' + esc(emp.name) + '</h2><div class="muted" style="margin-bottom:14px">' + esc(emp.dept) + ' · ' + periodLabel() + '</div>' +
+    '<div class="grid" style="margin-bottom:0">' +
+    '<div class="stat"><div class="n" style="color:#0891b2">' + s.H + '</div><div class="l">Work from home</div></div>' +
+    '<div class="stat"><div class="n" style="color:#7c3aed">' + s.O + '</div><div class="l">Work from office</div></div>' +
+    
+    '<div class="stat"><div class="n" style="color:var(--V)">' + s.V + '</div><div class="l">Leave</div></div>' +
+    '<div class="stat"><div class="n">' + s.U + '</div><div class="l">Not marked</div></div>' +
+    '<div class="stat"><div class="n">' + rate + '</div><div class="l">Attendance</div></div>' +
+    '</div></div>';
+
+  html += '<div class="card wrap"><h2>Daily record</h2><table><thead><tr><th>Date</th><th>Day</th><th>Status</th></tr></thead><tbody>' +
+    days.slice().reverse().map(d => {
+      const k = (db.records[d] || {})[id];
+      const dayName = new Date(d + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short'});
+      return '<tr><td>' + d + '</td><td class="muted">' + dayName + '</td><td>' + badge(k) + '</td></tr>';
+    }).join('') +
+    '</tbody></table></div>';
+  return html;
+}
+
+/* ---------- Employees ---------- */
+function viewEmps(){
+  let html = !can('manage') ? '' : brandingCard() + '<div class="card"><h2>Add employee</h2><div class="row">' +
+    '<input id="n-name" placeholder="Full name" style="flex:1;min-width:160px">' +
+    '<input id="n-dept" placeholder="Department" style="flex:1;min-width:140px">' +
+    '<input id="n-email" type="email" placeholder="Email (for reminders)" style="flex:1;min-width:180px">' +
+    '<button class="btn" onclick="addEmp()">Add</button></div></div>';
+
+  if (can('manage')) html += qrCard() + formulaCard() + holidayCard() + backupCard();
+  if (can('import')) html += '<div class="card"><h2>Import from Excel</h2>' +
+    '<p class="muted" style="margin-top:0">Upload an .xlsx, .xls, or .csv file whose first row is a header. Required column: <b>Name</b>. Optional column: <b>Department</b>. Names that already exist are skipped.</p>' +
+    '<div class="row"><input type="file" accept=".xlsx,.xls,.csv" onchange="importExcel(this)"></div>' +
+    (importMsg ? '<div class="muted">' + esc(importMsg) + '</div>' : '') + '</div>';
+  html += '<div class="card wrap"><h2>Employees (' + db.employees.length + ')</h2>';
+  if (!db.employees.length) {
+    html += '<p class="muted">No employees yet.</p>';
+  } else {
+    html += '<table><thead><tr><th>Name</th><th>Department</th><th></th></tr></thead><tbody>' +
+      db.employees.map(e =>
+        '<tr><td>' + esc(e.name) + '</td><td class="muted">' + esc(e.dept) + '</td>' +
+        (can('manage') ? '<td style="text-align:right"><button class="btn ghost" onclick="startProxy(\'' + e.id + '\')">View as</button> <button class="btn danger" onclick="removeEmp(\'' + e.id + '\')">Remove</button></td>' : '<td></td>') + '</tr>'
+      ).join('') +
+      '</tbody></table>';
+  }
+  html += '</div>';
+  document.getElementById('app').innerHTML = html;
+}
+
+let importMsg = '';
+
+function importExcel(input){
+  if (!can('import')) return;
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (typeof XLSX === 'undefined') { importMsg = 'The Excel reader could not load. Check your connection and try again.'; render(); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {defval: ''});
+      const pick = (row, keys) => {
+        for (const k of Object.keys(row)) {
+          if (keys.includes(k.toLowerCase().replace(/[^a-z]/g, ''))) return String(row[k]).trim();
+        }
+        return '';
+      };
+      const existing = new Set(db.employees.map(x => x.name.toLowerCase()));
+      let added = 0, skipped = 0, invalid = 0;
+      rows.forEach(r => {
+        const name = pick(r, ['name', 'employeename', 'fullname', 'employee']);
+        const dept = pick(r, ['department', 'dept', 'team']) || 'General';
+        const email = pick(r, ['email', 'mail', 'emailaddress']);
+        if (!name) { invalid++; return; }
+        if (existing.has(name.toLowerCase())) { skipped++; return; }
+        existing.add(name.toLowerCase());
+        db.employees.push({id: uid(), name, dept, email});
+        added++;
+      });
+      save();
+      if (!rows.length) importMsg = 'No rows found in the first sheet of this file.';
+      else importMsg = 'Imported ' + added + ' employee(s).' +
+        (skipped ? ' Skipped ' + skipped + ' duplicate name(s).' : '') +
+        (invalid ? ' ' + invalid + ' row(s) had no name and were ignored.' : '');
+    } catch (err) {
+      importMsg = 'This file could not be read. Please upload a valid .xlsx, .xls, or .csv file.';
+    }
+    render();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function viewAccess(){
+  const roles = Object.keys(ROLES);
+  const mine = ROLES[currentRole].perms;
+  let html = '<div class="card wrap"><h2>Roles and permissions</h2><table><thead><tr><th>Permission</th>' +
+    roles.map(r => '<th style="text-align:center">' + r + (r === currentRole ? ' <span class="muted">(current)</span>' : '') + '</th>').join('') +
+    '</tr></thead><tbody>' +
+    PERMS.map(([k, l]) => '<tr><td>' + l + '</td>' + roles.map(r =>
+      '<td style="text-align:center">' + (ROLES[r].perms.includes(k) ? '<span style="color:var(--P);font-weight:600">Yes</span>' : '<span class="muted">No</span>') + '</td>').join('') + '</tr>').join('') +
+    '</tbody></table></div>';
+  html += '<div class="card"><h2>Your access as ' + currentRole + '</h2><p class="muted" style="margin-top:0">' + ROLES[currentRole].desc + '</p>' +
+    PERMS.map(([k, l]) => '<div style="padding:6px 0;border-bottom:1px solid var(--border)"><span class="dot" style="background:' + (mine.includes(k) ? 'var(--P)' : 'var(--border)') + '"></span>' + l + (mine.includes(k) ? '' : ' <span class="muted">(not allowed)</span>') + '</div>').join('') +
+    '</div>';
+  html += '<p class="muted">Accounts and roles are checked in the browser, so this is not secure protection for real HR data. Real access control needs a server.</p>';
+  if (can('users')) html += usersCard();
+  document.getElementById('app').innerHTML = html;
+}
+
+async function sha(text){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function setErr(m){ const e = document.getElementById('a-err'); if (e) e.textContent = m; }
+
+function startSession(u){
+  session = {id: u.id, username: u.username, name: u.name, role: u.role, empId: u.empId || null};
+  currentRole = u.role;
+  tab = 'daily';
+  render();
+}
+
+function signOut(){ session = null; currentRole = null; proxyEmpId = null; render(); }
+
+async function signIn(){
+  const u = document.getElementById('a-user').value.trim().toLowerCase();
+  const p = document.getElementById('a-pass').value;
+  const user = db.users.find(x => x.username === u);
+  if (!user || user.hash !== await sha(p)) { setErr('Incorrect username or password.'); return; }
+  startSession(user);
+}
+
+async function setupAdmin(){
+  const name = document.getElementById('a-name').value.trim();
+  const u = document.getElementById('a-user').value.trim().toLowerCase();
+  const p = document.getElementById('a-pass').value;
+  if (!name || !u || p.length < 6) { setErr('Enter a name, a username, and a password of at least 6 characters.'); return; }
+  const code = genCode();
+  const user = {id: uid(), username: u, name, role: 'Admin', hash: await sha(p), recovery: await sha(normCode(code))};
+  db.users.push(user);
+  save();
+  showNewCode(user, code);
+}
+
+function renderAuth(){
+  document.getElementById('nav').innerHTML = '';
+  if (newCode) { renderCodeScreen(); return; }
+  if (authView === 'forgot') { renderForgot(); return; }
+  const setup = !db.users.length;
+  document.getElementById('nav').innerHTML = '';
+  document.getElementById('app').innerHTML =
+    '<div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:24px">' + loginQr() + '<div class="card" style="max-width:380px;margin:40px auto;flex:1 1 380px">' +
+    (db.branding && db.branding.logo2 ? '<img src="' + db.branding.logo2 + '" alt="Company logo" style="max-height:70px;max-width:100%;display:block;margin:0 auto 12px">' : '') + '<h2>' + (setup ? 'Create the admin account' : 'Sign in') + '</h2>' +
+    '<p class="muted" style="margin-top:0">' + (setup ? 'No accounts exist yet. The first account becomes the Admin.' : 'Enter your username and password.') + '</p>' +
+    '<div class="row" style="flex-direction:column;align-items:stretch">' +
+    (setup ? '<input id="a-name" placeholder="Full name">' : '') +
+    '<input id="a-user" placeholder="Username" autocomplete="username">' +
+    '<input id="a-pass" type="password" placeholder="Password" autocomplete="current-password">' +
+    '</div>' +
+    '<button class="btn" style="width:100%" onclick="' + (setup ? 'setupAdmin()' : 'signIn()') + '">' + (setup ? 'Create admin and continue' : 'Sign in') + '</button>' +
+    '<div id="a-err" style="color:var(--A);margin-top:10px;font-size:14px"></div>' + (setup ? '' : '<p style="margin-top:12px;text-align:center"><a href="#" onclick="showForgot();return false">Forgot password?</a></p>') + '</div></div>';
+}
+
+function usersCard(){
+  return '<div class="card wrap"><h2>User accounts</h2><table><thead><tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr></thead><tbody>' +
+    db.users.map(u => '<tr><td>' + esc(u.name) + '</td><td class="muted">' + esc(u.username) + '</td><td>' + esc(u.role) + '</td><td style="text-align:right">' +
+      (u.id === session.id ? '<span class="muted">(you)</span>' : '<button class="btn ghost" onclick="adminReset(\'' + u.id + '\')">Reset password</button> <button class="btn danger" onclick="removeUser(\'' + u.id + '\')">Remove</button>') + '</td></tr>').join('') +
+    '</tbody></table><h2 style="margin-top:16px">Add user</h2><div class="row">' +
+    '<input id="u-name" placeholder="Full name" style="flex:1;min-width:140px">' +
+    '<input id="u-user" placeholder="Username" style="flex:1;min-width:120px">' +
+    '<input id="u-pass" type="password" placeholder="Temporary password (6+ characters)" style="flex:1;min-width:180px">' +
+    '<select id="u-role">' + Object.keys(ROLES).map(r => '<option>' + r + '</option>').join('') + '</select>' +
+    '<select id="u-emp"><option value="">Link employee (Employee role)</option>' + db.employees.map(e => '<option value="' + e.id + '">' + esc(e.name) + '</option>').join('') + '</select>' +
+    '<button class="btn" onclick="addUser()">Add</button></div></div>' + bulkCard();
+}
+
+async function addUser(){
+  if (!can('users')) return;
+  const name = document.getElementById('u-name').value.trim();
+  const u = document.getElementById('u-user').value.trim().toLowerCase();
+  const p = document.getElementById('u-pass').value;
+  const role = document.getElementById('u-role').value;
+  const empId = document.getElementById('u-emp') ? document.getElementById('u-emp').value : '';
+  if (role === 'Employee' && !empId) { alert('Choose the employee record to link to this Employee account.'); return; }
+  if (!name || !u || p.length < 6) { alert('Enter a name, a username, and a password of at least 6 characters.'); return; }
+  if (db.users.some(x => x.username === u)) { alert('That username already exists.'); return; }
+  const code = genCode();
+  db.users.push({id: uid(), username: u, name, role, empId: role === 'Employee' ? empId : null, hash: await sha(p), recovery: await sha(normCode(code))});
+  save();
+  alert('Account created for ' + name + '. Recovery code (shown only now, share it securely): ' + code);
+  render();
+}
+
+function removeUser(id){
+  if (!can('users')) return;
+  const target = db.users.find(x => x.id === id);
+  if (!target || id === session.id) return;
+  const admins = db.users.filter(x => x.role === 'Admin').length;
+  if (target.role === 'Admin' && admins <= 1) { alert('You cannot remove the last Admin account.'); return; }
+  if (!confirm('Remove the account for ' + target.name + '?')) return;
+  db.users = db.users.filter(x => x.id !== id);
+  save();
+  render();
+}
+
+function normCode(c){ return String(c).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+
+function genCode(){
+  const a = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const r = new Uint32Array(10);
+  crypto.getRandomValues(r);
+  let s = '';
+  for (const x of r) s += a[x % a.length];
+  return s.slice(0, 5) + '-' + s.slice(5);
+}
+
+function showNewCode(user, code){ pendingUser = user; newCode = code; render(); }
+
+function renderCodeScreen(){
+  document.getElementById('app').innerHTML =
+    '<div class="card" style="max-width:380px;margin:40px auto"><h2>Save your recovery code</h2>' +
+    '<p class="muted" style="margin-top:0">Use this code with your username to reset your password if you forget it. It is shown only once.</p>' +
+    '<div style="font-size:24px;font-weight:600;letter-spacing:2px;text-align:center;padding:14px;border:1px dashed var(--border);border-radius:8px;margin-bottom:14px">' + newCode + '</div>' +
+    '<button class="btn" style="width:100%" onclick="finishCode()">I have saved it, continue</button></div>';
+}
+
+function finishCode(){ const u = pendingUser; newCode = null; pendingUser = null; startSession(u); }
+
+function showForgot(){ authView = 'forgot'; renderAuth(); }
+function showSignIn(){ authView = 'signin'; renderAuth(); }
+
+function renderForgot(){
+  document.getElementById('app').innerHTML =
+    '<div class="card" style="max-width:380px;margin:40px auto"><h2>Reset password</h2>' +
+    '<p class="muted" style="margin-top:0">Enter your username, the recovery code you saved when your account was created, and a new password. If you do not have a recovery code, ask an Admin to reset your password.</p>' +
+    '<div class="row" style="flex-direction:column;align-items:stretch">' +
+    '<input id="f-user" placeholder="Username" autocomplete="username">' +
+    '<input id="f-code" placeholder="Recovery code (e.g. ABCDE-FGHJK)" autocomplete="off">' +
+    '<input id="f-pass" type="password" placeholder="New password (6+ characters)" autocomplete="new-password">' +
+    '</div>' +
+    '<button class="btn" style="width:100%" onclick="resetWithCode()">Reset password</button>' +
+    '<p style="text-align:center;margin:12px 0 0"><a href="#" onclick="showSignIn();return false">Back to sign in</a></p>' +
+    '<div id="a-err" style="color:var(--A);margin-top:10px;font-size:14px"></div></div>';
+}
+
+async function resetWithCode(){
+  const u = document.getElementById('f-user').value.trim().toLowerCase();
+  const c = normCode(document.getElementById('f-code').value);
+  const p = document.getElementById('f-pass').value;
+  const user = db.users.find(x => x.username === u);
+  if (!user || !user.recovery || user.recovery !== await sha(c)) { setErr('Username or recovery code is incorrect.'); return; }
+  if (p.length < 6) { setErr('The new password must be at least 6 characters.'); return; }
+  const code = genCode();
+  user.hash = await sha(p);
+  user.recovery = await sha(normCode(code));
+  save();
+  authView = 'signin';
+  showNewCode(user, code);
+}
+
+async function adminReset(id){
+  if (!can('users')) return;
+  const target = db.users.find(x => x.id === id);
+  if (!target) return;
+  const p = prompt('Set a temporary password for ' + target.name + ' (6+ characters). Share it with them securely:');
+  if (p === null) return;
+  if (p.length < 6) { alert('The password must be at least 6 characters.'); return; }
+  target.hash = await sha(p);
+  save();
+  alert('Password reset for ' + target.name + '.');
+  render();
+}
+
+let bulkMsg = '';
+let bulkResults = null;
+
+function bulkCard(){
+  const res = bulkResults ? '<div style="margin-top:12px"><h2>Created accounts</h2><p class="muted">Share these credentials and recovery codes securely. They will not be shown again.</p><div class="wrap"><table><thead><tr><th>Name</th><th>Username</th><th>Password</th><th>Recovery code</th></tr></thead><tbody>' + bulkResults.map(r => '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.username) + '</td><td>' + esc(r.password) + '</td><td>' + esc(r.code) + '</td></tr>').join('') + '</tbody></table></div><button class="btn ghost" style="margin-top:10px" onclick="bulkResults=null;render()">Hide</button></div>' : '';
+  return '<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px"><h2>Bulk add from Excel</h2>' +
+    '<p class="muted" style="margin-top:0">Upload an .xlsx, .xls, or .csv file with a header row. Required columns: <b>Name</b> and <b>Username</b>. Optional: <b>Role</b> (Admin, Manager, or Viewer; defaults to Viewer) and <b>Password</b> (6+ characters; a password is generated if blank). Existing usernames are skipped.</p>' +
+    '<div class="row"><input type="file" accept=".xlsx,.xls,.csv" onchange="importUsersExcel(this)"></div>' +
+    (bulkMsg ? '<div class="muted">' + esc(bulkMsg) + '</div>' : '') + res + '</div>';
+}
+
+async function importUsersExcel(input){
+  if (!can('users')) return;
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (typeof XLSX === 'undefined') { bulkMsg = 'The Excel reader could not load. Check your connection and try again.'; render(); return; }
+  let rows;
+  try {
+    const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), {type: 'array'});
+    rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval: ''});
+  } catch (err) {
+    bulkMsg = 'This file could not be read. Please upload a valid .xlsx, .xls, or .csv file.';
+    render();
+    return;
+  }
+  const pick = (row, keys) => {
+    for (const k of Object.keys(row)) {
+      if (keys.includes(k.toLowerCase().replace(/[^a-z]/g, ''))) return String(row[k]).trim();
+    }
+    return '';
+  };
+  const taken = new Set(db.users.map(x => x.username));
+  const results = [];
+  let skipped = 0, invalid = 0;
+  for (const r of rows) {
+    const name = pick(r, ['name', 'fullname', 'employeename']);
+    const username = pick(r, ['username', 'user', 'login']).toLowerCase();
+    const roleRaw = pick(r, ['role']) || 'Viewer';
+    const role = Object.keys(ROLES).find(k => k.toLowerCase() === roleRaw.toLowerCase());
+    let password = pick(r, ['password']);
+    if (!name || !username || !role) { invalid++; continue; }
+    let empId = null;
+    if (role === 'Employee') {
+      const match = db.employees.find(e => e.name.toLowerCase() === name.toLowerCase());
+      if (!match) { invalid++; continue; }
+      empId = match.id;
+    }
+    if (password && password.length < 6) { invalid++; continue; }
+    if (taken.has(username)) { skipped++; continue; }
+    if (!password) password = genCode();
+    const code = genCode();
+    taken.add(username);
+    db.users.push({id: uid(), username, name, role, empId, hash: await sha(password), recovery: await sha(normCode(code))});
+    results.push({name, username, password, code});
+  }
+  save();
+  bulkResults = results.length ? results : null;
+  bulkMsg = 'Created ' + results.length + ' account(s).' +
+    (skipped ? ' Skipped ' + skipped + ' existing username(s).' : '') +
+    (invalid ? ' ' + invalid + ' row(s) were invalid (missing name or username, unknown role, or password under 6 characters) and ignored.' : '');
+  render();
+}
+
+let period = 'month';
+let quarter = Math.floor(new Date().getMonth() / 3) + 1;
+let qYear = new Date().getFullYear();
+
+function periodLabel(){ return period === 'week' ? 'Week of ' + mondayOf(weekAnchor) : period === 'month' ? month : period === 'year' ? 'Year ' + qYear : 'Q' + quarter + ' ' + qYear; }
+
+function quarterMonths(){
+  if (period === 'year') return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => qYear + '-' + String(m).padStart(2, '0'));
+  return [0, 1, 2].map(i => qYear + '-' + String((quarter - 1) * 3 + i + 1).padStart(2, '0'));
+}
+
+function periodDays(){
+  if (period === 'week') return weekDaysOf(weekAnchor).filter(workDay);
+  if (period === 'month') return pastDays(month);
+  return quarterMonths().flatMap(m => daysOf(m)).filter(workDay);
+}
+
+function periodControls(){
+  return '<div class="row"><label class="muted">Period</label><select onchange="period=this.value;render()">' +
+    '<option value="week"' + (period === 'week' ? ' selected' : '') + '>Weekly</option>' +
+    '<option value="month"' + (period === 'month' ? ' selected' : '') + '>Monthly</option>' +
+    '<option value="quarter"' + (period === 'quarter' ? ' selected' : '') + '>Quarterly</option>' +
+    '<option value="year"' + (period === 'year' ? ' selected' : '') + '>Yearly</option></select>' +
+    (period === 'week'
+      ? '<input type="date" value="' + weekAnchor + '" onchange="weekAnchor=this.value;render()">'
+      : period === 'month'
+      ? '<input type="month" value="' + month + '" onchange="month=this.value;render()">'
+      : period === 'year' ? '<input type="number" min="2000" max="2100" value="' + qYear + '" onchange="qYear=+this.value;render()" style="width:100px">' : '<select onchange="quarter=+this.value;render()">' +
+        [1, 2, 3, 4].map(q => '<option value="' + q + '"' + (q === quarter ? ' selected' : '') + '>Q' + q + '</option>').join('') +
+        '</select><input type="number" min="2000" max="2100" value="' + qYear + '" onchange="qYear=+this.value;render()" style="width:100px">') +
+    (can('dashboard') && !isSelfView() ? '<button class="btn ghost" onclick="exportExcel()">Export to Excel</button>' : '') +
+    (can('dashboard') && !isSelfView() ? '<button class="btn ghost" onclick="exportRtwPdf()">Download RTW PDF</button>' : '') +
+    '</div>';
+}
+
+function quarterCard(){
+  const ms = quarterMonths();
+  return '<div class="card wrap"><h2>Q' + quarter + ' ' + qYear + ' by month</h2><table><thead><tr><th>Employee</th>' +
+    ms.map(m => '<th>' + m + '</th>').join('') + '<th>Quarter</th></tr></thead><tbody>' +
+    db.employees.map(e =>
+      '<tr><td>' + esc(e.name) + '</td>' +
+      ms.map(m => { const r = stats(e.id, pastDays(m), 'month').rate; return '<td>' + (r === null ? '—' : r + '%') + '</td>'; }).join('') +
+      '<td><b>' + (stats(e.id, periodDays()).rate === null ? '—' : stats(e.id, periodDays()).rate + '%') + '</b></td></tr>'
+    ).join('') +
+    '</tbody></table><p class="muted">Attendance for each month and for the whole quarter. Future days are excluded.</p></div>';
+}
+
+let brandingReady = true;
+
+function renderHeader(){
+  const b = (db && db.branding) || {};
+  document.getElementById('hdr').innerHTML = (b.logo1 ? '<img class="logo" src="' + b.logo1 + '" alt="Company logo">' : '') + '<h1>Employee Attendance Tracker</h1>' + globeHtml() + '<div id="clock" style="margin-left:0;text-align:right;line-height:1.3"></div>';
+  document.body.style.backgroundImage = b.bg ? 'linear-gradient(rgba(15,23,42,.55), rgba(15,23,42,.55)), url("' + b.bg + '")' : '';
+  document.body.style.backgroundSize = b.bg ? 'cover' : '';
+}
+
+function brandingCard(){
+  const b = db.branding || {};
+  const slot = (key, title, hint) => '<div style="flex:1;min-width:220px"><h2>' + title + '</h2><p class="muted" style="margin-top:0">' + hint + '</p>' +
+    (b[key] ? '<img src="' + b[key] + '" alt="" style="max-height:80px;max-width:100%;display:block;margin-bottom:8px;background:#fff;padding:6px;border-radius:6px">' : '<p class="muted">No image uploaded.</p>') +
+    '<div class="row"><input type="file" accept="image/*" onchange="uploadLogo(\'' + key + '\',this)">' +
+    (b[key] ? '<button class="btn ghost" onclick="removeLogo(\'' + key + '\')">Remove</button>' : '') + '</div></div>';
+  return '<div class="card"><h2>Company logos</h2><div class="row" style="align-items:flex-start">' +
+    slot('logo1', 'Header logo', 'Shown in the top bar of the app.') +
+    slot('logo2', 'Sign-in logo', 'Shown on the sign-in and password reset screens.') +
+    slot('bg', 'Background image', 'Shown behind the app (a wide photo under 300 KB works best).') + '</div></div>';
+}
+
+function uploadLogo(key, input){
+  if (!can('manage')) return;
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { alert('Please choose an image file (PNG, JPG, SVG, or WebP).'); return; }
+  if (file.size > 300 * 1024) { alert('Please use an image under 300 KB. Compress it or use a smaller version.'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    db.branding = db.branding || {};
+    db.branding[key] = reader.result;
+    save();
+    render();
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeLogo(key){
+  if (!can('manage') || !db.branding) return;
+  delete db.branding[key];
+  save();
+  render();
+}
+
+let MIN_WFO = 3;
+
+function syncMinWfo(){ MIN_WFO = formulaFor('week').target; }
+
+function allPeriodDays(){
+  if (period === 'week') return weekDaysOf(weekAnchor);
+  return period === 'month' ? daysOf(month) : quarterMonths().flatMap(m => daysOf(m));
+}
+
+// Full Monday-to-Sunday weeks inside the selected period that have already finished
+function weekRows(empId){
+  const all = allPeriodDays();
+  const inPeriod = new Set(all);
+  const t = todayStr();
+  const rows = [];
+  all.forEach(d => {
+    const dt = new Date(d + 'T00:00:00');
+    if (dt.getDay() !== 1) return;
+    const wk = [];
+    for (let i = 0; i < 7; i++) { const x = new Date(dt); x.setDate(dt.getDate() + i); wk.push(ymd(x)); }
+    if (!wk.every(x => inPeriod.has(x)) || wk[6] > t) return;
+    const n = wk.filter(x => ((db.records[x] || {})[empId]) === 'O').length;
+    const tgt = formulaFor('week', wk[0]).target;
+    rows.push({start: wk[0], end: wk[6], n, target: tgt, pct: Math.round(n / tgt * 100), ok: n >= tgt});
+  });
+  return rows;
+}
+
+function weekCell(empId){
+  const rows = weekRows(empId);
+  if (!rows.length) return '<span class="muted">—</span>';
+  const ok = rows.filter(r => r.ok).length;
+  return '<span class="badge" style="background:' + (ok === rows.length ? 'var(--P)' : 'var(--A)') + '">' + ok + '/' + rows.length + ' weeks</span>';
+}
+
+function viewReport(){
+  const all = db.employees.map(e => ({e, rows: weekRows(e.id)}));
+  const failing = all.filter(x => x.rows.some(r => !r.ok));
+  let html = periodControls() +
+    '<div class="card"><h2>Minimum ' + MIN_WFO + ' office days per week</h2><p class="muted" style="margin-top:0">Weeks run Monday to Sunday. Only full weeks inside the selected period that have finished are checked. An employee is listed here if any checked week has fewer than ' + MIN_WFO + ' Work from office days.</p></div>';
+  if (!db.employees.length) {
+    html += '<div class="card muted">No employees yet.</div>';
+  } else if (!all.some(x => x.rows.length)) {
+    html += '<div class="card muted">No full weeks have finished in this period yet.</div>';
+  } else if (!failing.length) {
+    html += '<div class="card" style="color:var(--P)"><b>All employees meet the minimum in every checked week.</b></div>';
+  } else {
+    html += '<div class="card wrap"><h2>Not meeting the minimum (' + failing.length + ')</h2><table><thead><tr><th>Employee</th><th>Dept</th><th>Weeks checked</th><th>Weeks below minimum</th><th>Details</th></tr></thead><tbody>' +
+      failing.map(({e, rows}) => {
+        const bad = rows.filter(r => !r.ok);
+        return '<tr><td>' + esc(e.name) + '</td><td class="muted">' + esc(e.dept) + '</td><td>' + rows.length + '</td><td><span class="badge" style="background:var(--A)">' + bad.length + '</span></td><td>' +
+          bad.map(r => r.start + ' to ' + r.end + ': ' + r.n + ' WFO day(s)').join('<br>') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  document.getElementById('app').innerHTML = html;
+}
+
+function tabVisible(k){
+  if (proxyEmpId) return k === 'daily' || k === 'dash';
+  if (k === 'dash') return can('dashboard') || can('dashboardSelf');
+  if (k === 'weekly') return can('dashboard') || can('dashboardSelf');
+  if (k === 'emps' || k === 'report' || k === 'analytics' || k === 'folders') return can('dashboard');
+  return true;
+}
+
+function viewSelfDaily(){
+  const emp = db.employees.find(e => e.id === session.empId);
+  const recs = db.records[date] || {};
+  let html = '<div class="row"><label class="muted">Date</label><input type="date" value="' + date + '" onchange="date=this.value;render()"><button class="btn ghost" onclick="date=todayStr();render()">Today</button></div>';
+  if (!emp) {
+    html += '<div class="card muted">Your account is not linked to an employee record. Ask an Admin to link it.</div>';
+  } else {
+    const btns = Object.keys(STATUS).map(k =>
+      '<button class="' + (recs[emp.id] === k ? 'on-' + k : '') + '" onclick="setStatus(\'' + date + '\',\'' + emp.id + '\',\'' + k + '\')">' + STATUS[k].label + '</button>'
+    ).join('');
+    html += '<div class="card"><h2>' + esc(emp.name) + '</h2><p class="muted" style="margin-top:0">Mark your attendance for ' + date + '.</p><div class="st">' + btns + '</div></div>';
+  }
+  document.getElementById('app').innerHTML = html;
+}
+
+function viewSelfDash(){
+  const emp = db.employees.find(e => e.id === selfEmpId());
+  if (!emp) {
+    document.getElementById('app').innerHTML = '<div class="card muted">Your account is not linked to an employee record yet. Ask an Admin to link it.</div>';
+    return;
+  }
+  const weeks = weekRows(emp.id);
+  let html = periodControls() + empDetail(emp.id, periodDays());
+  html += '<div class="card wrap"><h2>Office days by week (minimum ' + MIN_WFO + ')</h2>' +
+    (weeks.length
+      ? '<table><thead><tr><th>Week</th><th>WFO days</th><th>Status</th></tr></thead><tbody>' +
+        weeks.map(w => '<tr><td>' + w.start + ' to ' + w.end + '</td><td>' + w.n + ' of ' + MIN_WFO + ' (' + w.pct + '%)</td><td><span class="badge" style="background:' + (w.ok ? 'var(--P)' : 'var(--A)') + '">' + (w.ok ? 'Met' : 'Below minimum') + '</span></td></tr>').join('') +
+        '</tbody></table>'
+      : '<p class="muted">No full weeks have finished in this period yet.</p>') + '</div>';
+  document.getElementById('app').innerHTML = html;
+}
+
+function weekDays(){
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7;
+  const mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+  const out = [];
+  for (let i = 0; i < 7; i++) { const x = new Date(mon); x.setDate(mon.getDate() + i); out.push(ymd(x)); }
+  return out;
+}
+
+function viewSelfWeek(){
+  const emp = db.employees.find(e => e.id === selfEmpId());
+  if (!emp) {
+    document.getElementById('app').innerHTML = '<div class="card muted">Your account is not linked to an employee record. Ask an Admin to link it.</div>';
+    return;
+  }
+  const days = weekDays();
+  const t = todayStr();
+  const rows = days.map(d => {
+    const k = (db.records[d] || {})[emp.id];
+    const btns = Object.keys(STATUS).map(s =>
+      '<button class="' + (k === s ? 'on-' + s : '') + '" onclick="setStatus(\'' + d + '\',\'' + emp.id + '\',\'' + s + '\')">' + STATUS[s].label + '</button>'
+    ).join('');
+    const dayName = new Date(d + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'long'});
+    return '<tr><td>' + dayName + (d === t ? ' <span class="muted">(today)</span>' : '') + '</td><td class="muted">' + d + '</td><td><div class="st">' + btns + '</div></td></tr>';
+  }).join('');
+  document.getElementById('app').innerHTML = '<div class="card wrap"><h2>' + esc(emp.name) + ': this week</h2>' +
+    '<p class="muted" style="margin-top:0">You can edit attendance for the current week only, ' + days[0] + ' to ' + days[6] + '. Earlier and later weeks are locked.</p>' +
+    '<table><thead><tr><th>Day</th><th>Date</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+let attMsg = '';
+
+const STATUS_ALIAS = {v: 'V', leave: 'V', h: 'H', wfh: 'H', home: 'H', workfromhome: 'H', o: 'O', wfo: 'O', office: 'O', workfromoffice: 'O'};
+
+function parseStatus(s){ return STATUS_ALIAS[String(s).toLowerCase().replace(/[^a-z]/g, '')] || null; }
+
+function validDate(s){ const d = new Date(s + 'T00:00:00'); return !isNaN(d) && ymd(d) === s; }
+
+function parseDate(v){
+  if (v instanceof Date && !isNaN(v)) return ymd(v);
+  if (typeof v === 'number') {
+    const d = new Date(Math.round((v - 25569) * 86400000));
+    const iso = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+    return validDate(iso) ? iso : null;
+  }
+  const s = String(v).trim();
+  let y, mo, dd;
+  const iso1 = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const dmy = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if (iso1) { y = iso1[1]; mo = iso1[2]; dd = iso1[3]; }
+  else if (dmy) { dd = dmy[1]; mo = dmy[2]; y = dmy[3]; }
+  else return null;
+  const out = y + '-' + String(+mo).padStart(2, '0') + '-' + String(+dd).padStart(2, '0');
+  return validDate(out) ? out : null;
+}
+
+function pickRaw(row, keys){
+  for (const k of Object.keys(row)) {
+    if (keys.includes(k.toLowerCase().replace(/[^a-z]/g, ''))) return row[k];
+  }
+  return '';
+}
+
+function attendanceImportCard(){
+  return '<div class="card"><h2>Bulk attendance from Excel</h2><p class="muted" style="margin-top:0">Upload an .xlsx, .xls, or .csv file with a header row and one row per employee per day. Columns: <b>Employee</b> (name as in the employee list), <b>Date</b> (YYYY-MM-DD or DD/MM/YYYY), and <b>Status</b>: Leave, WFH, or WFO. Existing records for the same employee and date are replaced.</p>' +
+    '<div class="row"><input type="file" accept=".xlsx,.xls,.csv" onchange="importAttendanceExcel(this)"></div>' +
+    (attMsg ? '<div class="muted">' + esc(attMsg) + '</div>' : '') + '</div>';
+}
+
+function importAttendanceExcel(input){
+  if (!can('mark')) return;
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (typeof XLSX === 'undefined') { attMsg = 'The Excel reader could not load. Check your connection and try again.'; render(); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval: ''});
+      const byName = new Map(db.employees.map(x => [x.name.trim().toLowerCase(), x.id]));
+      let ok = 0, blank = 0, badDate = 0, badStatus = 0;
+      const unknown = new Set();
+      rows.forEach(r => {
+        const nameRaw = String(pickRaw(r, ['employee', 'employeename', 'name', 'fullname'])).trim();
+        const dateRaw = pickRaw(r, ['date', 'attendancedate']);
+        const statusRaw = pickRaw(r, ['status', 'attendance']);
+        if (!nameRaw && String(dateRaw) === '' && String(statusRaw) === '') { blank++; return; }
+        const empId = byName.get(nameRaw.toLowerCase());
+        if (!empId) { unknown.add(nameRaw || '(blank name)'); return; }
+        const d = parseDate(dateRaw);
+        if (!d) { badDate++; return; }
+        const st = parseStatus(statusRaw);
+        if (!st) { badStatus++; return; }
+        db.records[d] = db.records[d] || {};
+        db.records[d][empId] = st;
+        ok++;
+      });
+      save();
+      const names = [...unknown];
+      attMsg = 'Imported ' + ok + ' attendance record(s).' +
+        (names.length ? ' Unknown employee name(s): ' + names.slice(0, 10).join(', ') + (names.length > 10 ? ' and others' : '') + '.' : '') +
+        (badDate ? ' ' + badDate + ' row(s) had an invalid date (use YYYY-MM-DD or DD/MM/YYYY).' : '') +
+        (badStatus ? ' ' + badStatus + ' row(s) had an unknown status (use Leave, WFH, or WFO).' : '') +
+        (blank ? ' ' + blank + ' empty row(s) skipped.' : '');
+    } catch (err) {
+      attMsg = 'This file could not be read. Please upload a valid .xlsx, .xls, or .csv file.';
+    }
+    render();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+let proxyEmpId = null;
+
+function isSelfView(){ return !!proxyEmpId || (!!session && session.role === 'Employee'); }
+
+function selfEmpId(){ return proxyEmpId || (session && session.empId); }
+
+function startProxy(id){
+  if (!can('users')) return;
+  proxyEmpId = id;
+  tab = 'daily';
+  render();
+}
+
+function exitProxy(){
+  proxyEmpId = null;
+  tab = 'emps';
+  render();
+}
+
+async function exportExcel(){
+  if (!can('dashboard') || isSelfView()) return;
+  if (typeof XLSX === 'undefined') { alert('The Excel library could not load. Check your connection and try again.'); return; }
+  const t = todayStr();
+  const past = allPeriodDays().filter(d => d <= t);
+  const summary = db.employees.map(e => {
+    const s = stats(e.id, past);
+    const wk = weekRows(e.id);
+    return {Employee: e.name, Department: e.dept, 'Work from home': s.H, 'Work from office': s.O, Leave: s.V, 'Not marked': s.U,
+      'Attendance %': s.rate === null ? '' : s.rate, 'Weeks checked': wk.length, 'Weeks meeting minimum': wk.filter(r => r.ok).length, 'Weeks below minimum': wk.filter(r => !r.ok).length};
+  });
+  const daily = [];
+  past.forEach(d => db.employees.forEach(e => {
+    const k = (db.records[d] || {})[e.id];
+    daily.push({Date: d, Employee: e.name, Department: e.dept, Status: k ? STATUS[k].label : 'Not marked'});
+  }));
+  const weekly = [];
+  db.employees.forEach(e => weekRows(e.id).forEach(w => weekly.push({Employee: e.name, Department: e.dept, 'Week start': w.start, 'Week end': w.end, 'WFO days': w.n, 'Attendance %': w.pct, Status: w.ok ? 'Met' : 'Below minimum'})));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary.length ? summary : [{Note: 'No employees'}]), 'Summary');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(daily.length ? daily : [{Note: 'No days in this period yet'}]), 'Daily');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(weekly.length ? weekly : [{Note: 'No full weeks finished in this period'}]), 'Weekly RTW');
+  const label = period === 'week' ? 'week-' + mondayOf(weekAnchor) : period === 'month' ? month : period === 'year' ? String(qYear) : 'Q' + quarter + '-' + qYear;
+  const data = XLSX.write(wb, {bookType: 'xlsx', type: 'array'});
+  const dl = window.claude ? await window.claude.use('downloads') : null;
+  if (!dl) { alert('Saving files is not available in this view.'); return; }
+  try {
+    await dl.save({filename: 'attendance-report-' + label + '.xlsx', data});
+  } catch (err) {
+    if (err && err.code !== 'declined') alert('The file could not be saved: ' + (err.message || err.code));
+  }
+}
+
+let bkMsg = '';
+
+function backupCard(){
+  return '<div class="card"><h2>Backup and restore</h2><p class="muted" style="margin-top:0">A backup saves all employees and attendance records to an Excel file. Login accounts and passwords are not included. Restoring adds employees that are missing (matched by name) and replaces attendance for the dates in the file.</p>' +
+    '<div class="row"><button class="btn" onclick="exportBackup()">Download backup</button>' +
+    '<input type="file" accept=".xlsx,.xls" onchange="restoreBackup(this)"></div>' +
+    (bkMsg ? '<div class="muted">' + esc(bkMsg) + '</div>' : '') + '</div>';
+}
+
+async function exportBackup(){
+  if (!can('manage')) return;
+  if (typeof XLSX === 'undefined') { alert('The Excel library could not load. Check your connection and try again.'); return; }
+  const emps = db.employees.map(e => ({Name: e.name, Department: e.dept, Email: e.email || ''}));
+  const att = [];
+  Object.keys(db.records).sort().forEach(d => db.employees.forEach(e => {
+    const k = (db.records[d] || {})[e.id];
+    if (k) att.push({Employee: e.name, Date: d, Status: STATUS[k].label});
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(emps.length ? emps : [{Name: '', Department: ''}]), 'Employees');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(att.length ? att : [{Employee: '', Date: '', Status: ''}]), 'Attendance');
+  const data = XLSX.write(wb, {bookType: 'xlsx', type: 'array'});
+  const dl = window.claude ? await window.claude.use('downloads') : null;
+  if (!dl) { alert('Saving files is not available in this view.'); return; }
+  try {
+    await dl.save({filename: 'attendance-backup-' + todayStr() + '.xlsx', data});
+    bkMsg = 'Backup saved with ' + emps.length + ' employee(s) and ' + att.length + ' attendance record(s).';
+  } catch (err) {
+    if (err && err.code !== 'declined') alert('The backup could not be saved: ' + (err.message || err.code));
+  }
+  render();
+}
+
+async function restoreBackup(input){
+  if (!can('manage')) return;
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (typeof XLSX === 'undefined') { bkMsg = 'The Excel reader could not load. Check your connection and try again.'; render(); return; }
+  if (!confirm('Restore will add missing employees and overwrite attendance for the dates in this file. Continue?')) return;
+  let wb;
+  try {
+    wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), {type: 'array'});
+  } catch (err) {
+    bkMsg = 'This file could not be read.';
+    render();
+    return;
+  }
+  if (!wb.Sheets['Employees'] && !wb.Sheets['Attendance']) {
+    bkMsg = 'This does not look like a backup file (no Employees or Attendance sheet).';
+    render();
+    return;
+  }
+  const empRows = wb.Sheets['Employees'] ? XLSX.utils.sheet_to_json(wb.Sheets['Employees'], {defval: ''}) : [];
+  const attRows = wb.Sheets['Attendance'] ? XLSX.utils.sheet_to_json(wb.Sheets['Attendance'], {defval: ''}) : [];
+  let addedEmp = 0;
+  empRows.forEach(r => {
+    const name = String(r.Name || '').trim();
+    if (!name || db.employees.some(e => e.name.trim().toLowerCase() === name.toLowerCase())) return;
+    db.employees.push({id: uid(), name, dept: String(r.Department || '').trim() || 'General', email: String(r.Email || '').trim()});
+    addedEmp++;
+  });
+  const byName = new Map(db.employees.map(e => [e.name.trim().toLowerCase(), e.id]));
+  let ok = 0, badDate = 0, badStatus = 0;
+  const unknown = new Set();
+  attRows.forEach(r => {
+    const name = String(r.Employee || '').trim();
+    if (!name && String(r.Date) === '' && String(r.Status) === '') return;
+    const empId = byName.get(name.toLowerCase());
+    if (!empId) { unknown.add(name || '(blank name)'); return; }
+    const d = parseDate(r.Date);
+    if (!d) { badDate++; return; }
+    const st = parseStatus(r.Status);
+    if (!st) { badStatus++; return; }
+    db.records[d] = db.records[d] || {};
+    db.records[d][empId] = st;
+    ok++;
+  });
+  save();
+  const names = [...unknown];
+  bkMsg = 'Restore complete: added ' + addedEmp + ' employee(s) and restored ' + ok + ' attendance record(s).' +
+    (names.length ? ' Unknown employee name(s) in Attendance: ' + names.slice(0, 10).join(', ') + '.' : '') +
+    (badDate ? ' ' + badDate + ' row(s) had an invalid date.' : '') +
+    (badStatus ? ' ' + badStatus + ' row(s) had an unknown status.' : '');
+  render();
+}
+
+async function exportRtwPdf(){
+  if (!can('dashboard') || isSelfView()) return;
+  if (!window.jspdf) { alert('The PDF library could not load. Check your connection and try again.'); return; }
+  const { jsPDF } = window.jspdf;
+  const rows = db.employees.map(e => {
+    const wk = weekRows(e.id);
+    const met = wk.filter(r => r.ok).length;
+    return {e, wk, met, total: wk.length, pct: wk.length ? Math.round(met / wk.length * 100) : null};
+  });
+  const sorted = rows.filter(r => r.pct !== null).sort((a, b) => a.pct - b.pct || a.e.name.localeCompare(b.e.name));
+  const unchecked = rows.filter(r => r.pct === null);
+  const label = period === 'week' ? 'week-' + mondayOf(weekAnchor) : period === 'month' ? month : period === 'year' ? String(qYear) : 'Q' + quarter + ' ' + qYear;
+  const doc = new jsPDF({unit: 'mm', format: 'a4'});
+  const pageH = 297, margin = 15;
+  let y = margin;
+  const need = h => { if (y + h > pageH - margin) { doc.addPage(); y = margin; } };
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+  doc.text('Weekly RTW Compliance Report', margin, y + 6); y += 12;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  doc.text('Period: ' + label, margin, y); y += 5;
+  doc.text('Minimum: ' + MIN_WFO + ' Work from office days per week (Monday to Sunday)', margin, y); y += 5;
+  doc.text('Generated: ' + todayStr() + '. Only full, finished weeks are counted.', margin, y); y += 9;
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+  doc.text('Compliance by employee (lowest to highest)', margin, y); y += 6;
+  if (!sorted.length) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    doc.text('No full weeks have finished in this period yet.', margin, y); y += 8;
+  } else {
+    const labelW = 55, barMax = 100, barH = 6, gap = 3;
+    sorted.forEach(r => {
+      need(barH + gap);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+      doc.setTextColor(0, 0, 0);
+      doc.text(r.e.name.slice(0, 28), margin, y + 4.5);
+      doc.setFillColor(226, 232, 240);
+      doc.rect(margin + labelW, y, barMax, barH, 'F');
+      if (r.pct > 0) {
+        if (r.pct >= 100) doc.setFillColor(22, 163, 74);
+        else if (r.pct >= 50) doc.setFillColor(217, 119, 6);
+        else doc.setFillColor(220, 38, 38);
+        doc.rect(margin + labelW, y, barMax * r.pct / 100, barH, 'F');
+      }
+      doc.text(r.pct + '% (' + r.met + ' of ' + r.total + ' weeks)', margin + labelW + barMax + 3, y + 4.5);
+      y += barH + gap;
+    });
+    y += 4;
+  }
+  if (unchecked.length) {
+    need(8);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.text('No finished weeks yet: ' + unchecked.map(r => r.e.name).join(', '), margin, y); y += 8;
+  }
+
+  need(12);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+  doc.text('Weekly detail', margin, y); y += 6;
+  sorted.concat(unchecked).forEach(r => {
+    need(14);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    doc.text(r.e.name + ' (' + r.e.dept + ')', margin, y); y += 5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    if (!r.wk.length) { doc.text('No finished full weeks in this period.', margin + 4, y); y += 7; return; }
+    r.wk.forEach(w => {
+      need(5);
+      doc.text(w.start + ' to ' + w.end, margin + 4, y);
+      doc.text(w.n + ' of ' + MIN_WFO + ' WFO (' + w.pct + '%)', margin + 60, y);
+      if (w.ok) doc.setTextColor(22, 163, 74); else doc.setTextColor(220, 38, 38);
+      doc.text(w.ok ? 'Met' : 'Below minimum', margin + 100, y);
+      doc.setTextColor(0, 0, 0);
+      y += 5;
+    });
+    y += 3;
+  });
+
+  const data = doc.output('arraybuffer');
+  const dl = window.claude ? await window.claude.use('downloads') : null;
+  if (!dl) { alert('Saving files is not available in this view.'); return; }
+  try {
+    await dl.save({filename: 'rtw-compliance-' + label.replace(/\s+/g, '-') + '.pdf', data});
+  } catch (err) {
+    if (err && err.code !== 'declined') alert('The PDF could not be saved: ' + (err.message || err.code));
+  }
+}
+
+function reminderCard(){
+  if (!can('mark')) return '';
+  const recs = db.records[date] || {};
+  if (db.holidays[date]) return '<div class="card"><h2>Public holiday</h2><p class="muted" style="margin-top:0">' + esc(db.holidays[date]) + ' is a public holiday, so no reminders are due.</p></div>';
+  const missing = db.employees.filter(e => !recs[e.id]);
+  let html = '<div class="card"><h2>Missed attendance for ' + date + '</h2>' +
+    '<p class="muted" style="margin-top:0">Each button opens your email app with a reminder ready to send. This page cannot send emails by itself or send them automatically each day.</p>';
+  if (!missing.length) return html + '<p class="muted">Everyone has a status for this date.</p></div>';
+  const subj = encodeURIComponent('Attendance reminder: ' + date);
+  const withEmail = missing.filter(e => e.email);
+  if (withEmail.length) {
+    html += '<div class="row"><a class="btn" href="mailto:?bcc=' + encodeURIComponent(withEmail.map(e => e.email).join(',')) +
+      '&subject=' + subj + '&body=' + encodeURIComponent('Please mark your attendance for ' + date + ' in the attendance tracker. Thank you.') +
+      '">Email all missing (' + withEmail.length + ', BCC)</a></div>';
+  }
+  html += '<table><thead><tr><th>Employee</th><th>Email</th><th></th></tr></thead><tbody>' +
+    missing.map(e => '<tr><td>' + esc(e.name) + '</td><td class="muted">' + (e.email ? esc(e.email) : 'No email saved') + '</td><td style="text-align:right">' +
+      (e.email ? '<a class="btn ghost" href="mailto:' + encodeURIComponent(e.email) + '?subject=' + subj + '&body=' + encodeURIComponent('Hi ' + e.name + ', please mark your attendance for ' + date + ' in the attendance tracker. Thank you.') + '">Email</a>' : '') +
+      '</td></tr>').join('') + '</tbody></table></div>';
+  return html;
+}
+
+let weekAnchor = todayStr();
+const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function mondayOf(s){
+  const d = new Date(s + 'T00:00:00');
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return ymd(d);
+}
+
+function shiftWeek(n){
+  const d = new Date(weekAnchor + 'T00:00:00');
+  d.setDate(d.getDate() + 7 * n);
+  weekAnchor = ymd(d);
+  render();
+}
+
+function viewWeekly(){
+  const mon = mondayOf(weekAnchor);
+  const days = [0, 1, 2, 3, 4, 5, 6].map(i => { const d = new Date(mon + 'T00:00:00'); d.setDate(d.getDate() + i); return ymd(d); });
+  const t = todayStr();
+  let html = '<div class="row"><button class="btn ghost" onclick="shiftWeek(-1)">← Previous</button>' +
+    '<input type="date" value="' + weekAnchor + '" onchange="weekAnchor=this.value;render()">' +
+    '<button class="btn ghost" onclick="shiftWeek(1)">Next →</button>' +
+    '<button class="btn ghost" onclick="weekAnchor=todayStr();render()">This week</button></div>';
+  html += '<div class="card wrap"><h2>Week of ' + mon + ' to ' + days[6] + '</h2>';
+  if (!db.employees.length) {
+    html += '<p class="muted">No employees yet.</p></div>';
+  } else {
+    html += '<table><thead><tr><th>Employee</th>' +
+      days.map((d, i) => '<th style="text-align:center">' + SHORT_DAYS[i] + '<br><span class="muted">' + d.slice(8) + '</span>' + (db.holidays[d] ? '<br><span style="font-size:11px;color:#b45309">' + esc(db.holidays[d]) + '</span>' : '') + '</th>').join('') +
+      '<th style="text-align:center">WFO days</th><th style="text-align:center">WFO ÷ ' + MIN_WFO + '</th></tr></thead><tbody>' +
+      (isSelfView() ? db.employees.filter(e => e.id === selfEmpId()) : db.employees).map(e => {
+        const cells = days.map(d => {
+          const k = (db.records[d] || {})[e.id];
+          const inner = k ? '<span class="badge" style="background:' + STATUS[k].color + '">' + STATUS[k].label + '</span>'
+            : (d > t ? '<span class="muted">—</span>' : '<span class="muted">Not marked</span>');
+          return '<td style="text-align:center">' + inner + '</td>';
+        }).join('');
+        const n = days.filter(d => ((db.records[d] || {})[e.id]) === 'O').length;
+        const color = n >= MIN_WFO ? 'var(--P)' : 'var(--A)';
+        return '<tr><td>' + esc(e.name) + '<div class="muted">' + esc(e.dept) + '</div></td>' + cells +
+          '<td style="text-align:center">' + n + '</td>' +
+          '<td style="text-align:center"><span class="badge" style="background:' + color + '">' + Math.round(n / MIN_WFO * 100) + '%</span></td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  html += '<p class="muted">Weekly RTW is WFO ÷ ' + MIN_WFO + ' (minimum ' + MIN_WFO + ' Work from office days). Future days show a dash. Use the arrows to move between weeks.</p>';
+  document.getElementById('app').innerHTML = html;
+}
+
+function viewAnalytics(){
+  let html = periodControls() + empFilterHtml() + insightsHtml() + pieHtml() + heatmapHtml();
+  const rows = analyticsEmps()
+    .map(e => ({e, s: stats(e.id, periodDays())}))
+    .sort((a, b) => b.s.rate - a.s.rate || a.e.name.localeCompare(b.e.name));
+  if (!rows.length) {
+    html += '<div class="card muted">No employees yet. Add some in the Employees tab.</div>';
+  } else {
+    html += '<div class="card"><h2>Attendance by employee, ' + periodLabel() + ' (highest to lowest)</h2>';
+    html += rows.map(({e, s}) => {
+      const pct = s.rate;
+      const width = Math.min(pct, 100);
+      const color = pct >= 100 ? 'var(--P)' : pct >= 50 ? 'var(--L)' : 'var(--A)';
+      return '<div style="display:grid;grid-template-columns:minmax(120px,180px) 1fr minmax(120px,170px);gap:10px;align-items:center;margin-bottom:12px">' +
+        '<div>' + esc(e.name) + '<div class="muted" style="font-size:12px">' + esc(e.dept) + '</div></div>' +
+        '<div class="bar" style="height:18px"><i style="width:' + width + '%;background:' + color + '"></i></div>' +
+        '<div style="font-size:13px"><b>' + pct + '%</b> <span class="muted">(' + s.O + ' WFO, ' + s.V + ' leave)</span></div>' +
+        '</div>';
+    }).join('') + '</div>';
+    html += '<p class="muted">' + formulaSummary() + ' Bars stop at 100%, but the label shows the actual figure.</p>';
+  }
+  document.getElementById('app').innerHTML = html;
+}
+
+function insightsHtml(){
+  if (!db.employees.length) return '';
+  const days = periodDays();
+  const rows = db.employees.map(e => ({e, s: stats(e.id, days), wk: weekRows(e.id)}));
+  const byRate = rows.slice().sort((a, b) => b.s.rate - a.s.rate || a.e.name.localeCompare(b.e.name));
+  const top = byRate[0], low = byRate[byRate.length - 1];
+  const avg = Math.round(rows.reduce((a, r) => a + r.s.rate, 0) / rows.length);
+  const totalCells = rows.length * days.length;
+  const marked = rows.reduce((a, r) => a + r.s.O + r.s.H + r.s.V, 0);
+  const unmarkedPct = totalCells ? Math.round((totalCells - marked) / totalCells * 100) : 0;
+  const leaveTotal = rows.reduce((a, r) => a + r.s.V, 0);
+  const topLeave = rows.slice().sort((a, b) => b.s.V - a.s.V)[0];
+  const missedWeek = rows.filter(r => r.wk.some(w => !w.ok));
+  const noWfo = rows.filter(r => days.length && r.s.O === 0);
+  const noEmail = rows.filter(r => !r.e.email);
+  const names = list => list.map(r => esc(r.e.name)).join(', ');
+
+  const insights = [
+    'Team average attendance is ' + avg + '% for ' + periodLabel() + '.',
+    'Highest: ' + esc(top.e.name) + ' at ' + top.s.rate + '%. Lowest: ' + esc(low.e.name) + ' at ' + low.s.rate + '%.',
+    'Total leave days: ' + leaveTotal + (leaveTotal ? '. Most leave: ' + esc(topLeave.e.name) + ' (' + topLeave.s.V + ' days).' : '.'),
+    'Marking coverage: ' + (100 - unmarkedPct) + '% of employee-days have a status; ' + unmarkedPct + '% are unmarked.',
+    'Weekly RTW: ' + missedWeek.length + ' of ' + rows.length + ' employee(s) missed the ' + MIN_WFO + '-day minimum in at least one finished week.'
+  ];
+  const actions = [];
+  if (missedWeek.length) actions.push('Follow up on the ' + MIN_WFO + '-day RTW minimum with: ' + names(missedWeek) + '. The RTW Compliance tab lists the weeks.');
+  if (noWfo.length) actions.push('No office days recorded this period for: ' + names(noWfo) + '. Confirm their working arrangement.');
+  if (low.s.rate < 50) actions.push('Check in with ' + esc(low.e.name) + ', whose attendance is ' + low.s.rate + '%.');
+  if (unmarkedPct >= 20) actions.push('Chase missing entries: ' + unmarkedPct + '% of days are unmarked. Use the reminder card on the Daily attendance tab.');
+  if (noEmail.length) actions.push('Add email addresses for ' + noEmail.length + ' employee(s) so reminders can be sent.');
+  if (topLeave && topLeave.s.V >= 5) actions.push('Review leave plans for ' + esc(topLeave.e.name) + ' (' + topLeave.s.V + ' leave days).');
+  if (!actions.length) actions.push('No urgent actions for this period.');
+
+  const list = items => '<ul style="margin:0;padding-left:20px">' + items.map(i => '<li style="margin-bottom:8px">' + i + '</li>').join('') + '</ul>';
+  return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:16px">' +
+    '<div class="card"><h2>Key insights</h2>' + list(insights) + '</div>' +
+    '<div class="card"><h2>Action points</h2>' + list(actions) + '</div></div>';
+}
+
+const sortMemo = {};
+
+function applySort(tbody, ci, dir){
+  const rows = Array.from(tbody.rows);
+  const txt = r => (r.cells[ci] ? r.cells[ci].textContent.replace(/\s+/g, ' ').trim() : '');
+  const isBlank = s => s === '' || s === '\u2014' || s === 'Not marked';
+  const lead = s => { const m = s.match(/^-?\d+(\.\d+)?/); return m ? parseFloat(m[0]) : null; };
+  const isDate = s => /^\d{4}-\d{2}-\d{2}/.test(s);
+  rows.sort((a, b) => {
+    const x = txt(a), y = txt(b);
+    if (isBlank(x) || isBlank(y)) {
+      if (isBlank(x) && isBlank(y)) return 0;
+      return isBlank(x) ? 1 : -1;
+    }
+    let c;
+    if (isDate(x) && isDate(y)) c = x < y ? -1 : x > y ? 1 : 0;
+    else if (lead(x) !== null && lead(y) !== null && lead(x) !== lead(y)) c = lead(x) - lead(y);
+    else c = x.localeCompare(y, undefined, {numeric: true, sensitivity: 'base'});
+    return dir === 'asc' ? c : -c;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+function enhanceTables(){
+  document.querySelectorAll('#app table').forEach((table, ti) => {
+    const tbody = table.querySelector('tbody');
+    const ths = table.querySelectorAll('thead th');
+    if (!tbody || !ths.length) return;
+    const key = tab + ':' + ti;
+    const paint = () => ths.forEach((th, ci) => {
+      const old = th.querySelector('.sort-ind');
+      if (old) old.remove();
+      if (sortMemo[key] && sortMemo[key].col === ci) {
+        const s = document.createElement('span');
+        s.className = 'sort-ind';
+        s.textContent = sortMemo[key].dir === 'asc' ? ' \u25b2' : ' \u25bc';
+        th.appendChild(s);
+      }
+    });
+    ths.forEach((th, ci) => {
+      if (!th.textContent.trim()) return;
+      th.style.cursor = 'pointer';
+      th.title = 'Click to sort';
+      th.onclick = () => {
+        const m = sortMemo[key];
+        const dir = m && m.col === ci && m.dir === 'asc' ? 'desc' : 'asc';
+        sortMemo[key] = {col: ci, dir};
+        applySort(tbody, ci, dir);
+        paint();
+      };
+    });
+    if (sortMemo[key]) applySort(tbody, sortMemo[key].col, sortMemo[key].dir);
+    paint();
+  });
+}
+
+function pieHtml(){
+  if (!db.employees.length) return '';
+  const days = periodDays();
+  const counts = {O: 0, H: 0, V: 0, U: 0};
+  analyticsEmps().forEach(e => days.forEach(d => {
+    const k = (db.records[d] || {})[e.id];
+    if (k) counts[k]++; else counts.U++;
+  }));
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  if (!total) return `<div class="card muted">No days in this period yet.</div>`;
+  const slices = [
+    {k: 'O', label: 'Work from office', c: '#7c3aed'},
+    {k: 'H', label: 'Work from home', c: '#0891b2'},
+    {k: 'V', label: 'Leave', c: '#f97316'},
+    {k: 'U', label: 'Not marked', c: '#9ca3af'}
+  ].filter(s => counts[s.k] > 0);
+  const cx = 90, cy = 90, r = 80;
+  let angle = -Math.PI / 2;
+  let paths = '';
+  slices.forEach(s => {
+    const frac = counts[s.k] / total;
+    if (slices.length === 1) {
+      paths += `<circle cx='${cx}' cy='${cy}' r='${r}' fill='${s.c}'/>`;
+      return;
+    }
+    const a2 = angle + frac * 2 * Math.PI;
+    const x1 = cx + r * Math.cos(angle), y1 = cy + r * Math.sin(angle);
+    const x2 = cx + r * Math.cos(a2), y2 = cy + r * Math.sin(a2);
+    const large = frac > 0.5 ? 1 : 0;
+    paths += `<path d='M${cx},${cy} L${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${large} 1 ${x2.toFixed(2)},${y2.toFixed(2)} Z' fill='${s.c}'/>`;
+    angle = a2;
+  });
+  const legend = slices.map(s =>
+    `<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px'><span style='width:12px;height:12px;border-radius:3px;background:${s.c};display:inline-block'></span>${s.label}: <b>${counts[s.k]}</b> <span class='muted'>(${Math.round(counts[s.k] / total * 100)}%)</span></div>`
+  ).join('');
+  return `<div class='card'><h2>Status mix, ${periodLabel()}</h2>` +
+    `<div style='display:flex;flex-wrap:wrap;gap:24px;align-items:center'>` +
+    `<svg viewBox='0 0 180 180' width='180' height='180' role='img' aria-label='Status pie chart'>${paths}</svg>` +
+    `<div>${legend}</div></div>` +
+    `<p class='muted' style='margin-bottom:0'>Share of employee-days in this period. Not marked means no status was recorded for that day.</p></div>`;
+}
+
+function weekDaysOf(s){
+  const mon = mondayOf(s);
+  return [0, 1, 2, 3, 4, 5, 6].map(i => { const d = new Date(mon + 'T00:00:00'); d.setDate(d.getDate() + i); return ymd(d); });
+}
+
+function heatmapHtml(){
+  if (!db.employees.length) return '';
+  const cols = allPeriodDays();
+  const t = todayStr();
+  const colorOf = {O: '#16a34a', H: '#0891b2', V: '#f97316'};
+  const cellW = cols.length > 40 ? 12 : 22;
+  const cellFor = (e, d) => {
+    const k = (db.records[d] || {})[e.id];
+    const future = d > t;
+    const hol = db.holidays[d];
+    const bg = future ? 'transparent' : hol ? '#fde68a' : (k ? colorOf[k] : '#e5e7eb');
+    const lbl = future ? 'Future' : hol ? 'Public holiday: ' + hol : (k ? STATUS[k].label : 'Not marked');
+    const border = future ? '1px dashed #cbd5e1' : 'none';
+    return `<div title='${esc(d + ' · ' + e.name + ': ' + lbl)}' style='width:${cellW}px;height:${cellW}px;background:${bg};border:${border};border-radius:3px;box-sizing:border-box;flex:0 0 auto'></div>`;
+  };
+  const header = `<div style='display:flex;align-items:flex-end;gap:3px;margin-bottom:6px;margin-left:158px'>` +
+    cols.map(d => `<div style='width:${cellW}px;flex:0 0 ${cellW}px;font-size:8px;text-align:center;overflow:hidden' class='muted'>${Number(d.slice(8))}</div>`).join('') + `</div>`;
+  const rows = analyticsEmps().map(e =>
+    `<div style='display:flex;align-items:center;gap:8px;margin-bottom:6px'>` +
+    `<div style='width:150px;flex:0 0 150px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>${esc(e.name)}</div>` +
+    `<div style='display:flex;gap:3px'>${cols.map(d => cellFor(e, d)).join('')}</div></div>`
+  ).join('');
+  const legend = [['#16a34a', 'Work from office'], ['#0891b2', 'Work from home'], ['#f97316', 'Leave'], ['#e5e7eb', 'Not marked'], ['#fde68a', 'Public holiday (calendar)']]
+    .map(([c, l]) => `<span style='display:inline-flex;align-items:center;gap:6px;margin-right:14px'><span style='width:12px;height:12px;border-radius:3px;background:${c};display:inline-block'></span>${l}</span>`).join('');
+  return `<div class='card'><h2>Attendance heatmap, ${periodLabel()}</h2>` +
+    `<div style='overflow-x:auto;padding-bottom:6px'>${header}${rows}</div>` +
+    `<div style='margin-top:10px;font-size:13px'>${legend}</div>` +
+    `<p class='muted' style='margin-bottom:0'>Each square is one day. Hover a square to see the date and status. Dashed squares are future days.</p></div>`;
+}
+
+function workDay(d){ return d <= todayStr() && !db.holidays[d]; }
+
+function holidayCard(){
+  const list = Object.keys(db.holidays).sort();
+  return `<div class='card'><h2>Public holidays</h2><p class='muted' style='margin-top:0'>Holidays are left out of not-marked counts, the pie chart, the heatmap, and reminders.</p>` +
+    (list.length
+      ? `<div class='wrap'><table><thead><tr><th>Date</th><th>Holiday</th><th></th></tr></thead><tbody>` +
+        list.map(d => `<tr><td>${d}</td><td>${esc(db.holidays[d])}</td><td style='text-align:right'><button class='btn danger' data-d='${d}' onclick='removeHoliday(this.dataset.d)'>Remove</button></td></tr>`).join('') +
+        `</tbody></table></div>`
+      : `<p class='muted'>No holidays added yet.</p>`) +
+    `<div class='row' style='margin-top:12px'><input type='date' id='h-date'><input id='h-name' placeholder='Holiday name' style='flex:1;min-width:160px'><button class='btn' onclick='addHoliday()'>Add holiday</button></div>` +
+    `<div style='margin-top:14px;border-top:1px solid var(--border);padding-top:12px'><h2>Bulk upload from Excel</h2>` +
+    `<p class='muted' style='margin-top:0'>Upload an .xlsx, .xls, or .csv file with a header row. Columns: <b>Date</b> (YYYY-MM-DD or DD/MM/YYYY) and <b>Holiday</b> (the name). Dates already on the list are replaced.</p>` +
+    `<div class='row'><input type='file' accept='.xlsx,.xls,.csv' onchange='importHolidaysExcel(this)'></div>` +
+    (hMsg ? `<div class='muted'>${esc(hMsg)}</div>` : '') + `</div>` +
+    `</div>`;
+}
+
+function addHoliday(){
+  if (!can('manage')) return;
+  const d = document.getElementById('h-date').value;
+  const n = document.getElementById('h-name').value.trim();
+  if (!d || !n) { alert('Choose a date and enter a holiday name.'); return; }
+  db.holidays[d] = n;
+  save();
+  render();
+}
+
+function removeHoliday(d){
+  if (!can('manage')) return;
+  delete db.holidays[d];
+  save();
+  render();
+}
+
+function holidayPanelHtml(){
+  const list = Object.keys(db.holidays).sort();
+  const t = todayStr();
+  const items = list.map(d => {
+    const day = new Date(d + 'T00:00:00').toLocaleDateString(undefined, {weekday: 'short'});
+    const tag = d === t ? ` <span class='badge' style='background:var(--P);font-size:10px'>Today</span>` : (d > t ? '' : ` <span class='muted' style='font-size:11px'>past</span>`);
+    return `<div style='padding:8px 0;border-bottom:1px solid var(--border)'><div style='font-weight:600'>${esc(db.holidays[d])}${tag}</div>` +
+      `<div class='muted' style='font-size:12px'>${d} · ${day}</div></div>`;
+  }).join('');
+  return `<div class='card' style='margin-bottom:0'><h2>Public holidays</h2>` +
+    (list.length ? items : `<p class='muted'>No holidays added yet.</p>`) +
+    `<p class='muted' style='font-size:12px;margin-bottom:0'>Admins add holidays on the Employees tab.</p></div>`;
+}
+
+function addHolidayPanel(){
+  const app = document.getElementById('app');
+  const inner = app.innerHTML;
+  app.innerHTML = `<div style='display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap'>` +
+    `<aside style='flex:0 0 240px;max-width:100%'>${holidayPanelHtml()}</aside>` +
+    `<div style='flex:1 1 420px;min-width:0'>${inner}</div></div>`;
+}
+
+let hMsg = '';
+
+function importHolidaysExcel(input){
+  if (!can('manage')) return;
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (typeof XLSX === 'undefined') { hMsg = 'The Excel reader could not load. Check your connection and try again.'; render(); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval: ''});
+      let ok = 0, bad = 0;
+      rows.forEach(r => {
+        const dateRaw = pickRaw(r, ['date', 'holidaydate']);
+        const name = String(pickRaw(r, ['holiday', 'holidayname', 'name', 'description'])).trim();
+        if (String(dateRaw) === '' && !name) return;
+        const d = parseDate(dateRaw);
+        if (!d || !name) { bad++; return; }
+        db.holidays[d] = name;
+        ok++;
+      });
+      save();
+      hMsg = 'Imported ' + ok + ' holiday(s).' + (bad ? ' ' + bad + ' row(s) had an invalid date or missing name and were ignored.' : '');
+    } catch (err) {
+      hMsg = 'This file could not be read. Please upload a valid .xlsx, .xls, or .csv file.';
+    }
+    render();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+const FOLDERS = [
+  {key: 'high', name: 'High Attendance', rule: 'Attendance of 100% or more', min: 100, color: '#16a34a'},
+  {key: 'medium', name: 'Medium Attendance', rule: 'Attendance from 75% to 99%', min: 75, color: '#d97706'},
+  {key: 'low', name: 'Low Attendance', rule: 'Attendance from 50% to 74%', min: 50, color: '#f97316'},
+  {key: 'very-low', name: 'Very Low Attendance', rule: 'Attendance below 50%', min: 0, color: '#dc2626'}
+];
+
+function folderOf(rate){
+  return rate >= 100 ? 'high' : rate >= 75 ? 'medium' : rate >= 50 ? 'low' : 'very-low';
+}
+
+function viewFolders(){
+  const rows = db.employees.map(e => ({e, rate: stats(e.id, periodDays()).rate}));
+  let html = periodControls();
+  html += `<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:16px'>` +
+    FOLDERS.map(f => {
+      const items = rows
+        .filter(r => folderOf(r.rate) === f.key)
+        .sort((a, b) => b.rate - a.rate || a.e.name.localeCompare(b.e.name));
+      const list = items.length
+        ? items.map(r => `<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)'><div>${esc(r.e.name)}<div class='muted' style='font-size:12px'>${esc(r.e.dept)}</div></div><b>${r.rate}%</b></div>`).join('')
+        : `<p class='muted'>No employees in this folder for ${esc(periodLabel())}.</p>`;
+      return `<div class='card' style='border-top:4px solid ${f.color};margin-bottom:0'>` +
+        `<h2>${f.name} <span class='muted' style='font-size:13px'>(${items.length})</span></h2>` +
+        `<p class='muted' style='margin-top:0;font-size:12px'>${f.rule}</p>${list}</div>`;
+    }).join('') + `</div>`;
+  html += `<p class='muted'>Folders are assigned automatically from each employee's attendance for the selected period. Change the period to see people move between folders.</p>`;
+  document.getElementById('app').innerHTML = html;
+}
+
+let analyticsEmp = 'all';
+
+function analyticsEmps(){
+  if (analyticsEmp === 'all') return db.employees;
+  const f = db.employees.filter(e => e.id === analyticsEmp);
+  return f.length ? f : db.employees;
+}
+
+function empFilterHtml(){
+  if (!db.employees.length) return '';
+  const opts = db.employees.map(e =>
+    `<option value='${e.id}'${analyticsEmp === e.id ? ' selected' : ''}>${esc(e.name)}</option>`
+  ).join('');
+  return `<div class='row'><label class='muted'>Employee</label>` +
+    `<select onchange='analyticsEmp=this.value;render()'><option value='all'${analyticsEmp === 'all' ? ' selected' : ''}>All employees</option>${opts}</select>` +
+    `<span class='muted' style='font-size:12px'>Filters the bar chart, pie chart, and heatmap. Key insights stay team-wide.</span></div>`;
+}
+
+function tickClock(){
+  const el = document.getElementById('clock');
+  if (!el) return;
+  const now = new Date();
+  const day = now.toLocaleDateString(undefined, {weekday: 'long', year: 'numeric', month: 'short', day: 'numeric'});
+  const time = now.toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short'});
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  el.innerHTML = `<div style='font-size:16px;font-weight:600'>${time}</div><div style='font-size:12px;opacity:.9'>${day}</div><div style='font-size:11px;opacity:.8'>${zone}</div>`;
+}
+
+setInterval(tickClock, 1000);
+
+function illustration3d(){
+  return `<svg viewBox='0 0 320 220' width='100%' style='max-width:300px;display:block;margin:0 auto 14px' role='img' aria-label='Attendance management illustration'>
+<defs>
+<linearGradient id='ilBoard' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#818cf8'/><stop offset='1' stop-color='#4f46e5'/></linearGradient>
+<linearGradient id='ilPaper' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#ffffff'/><stop offset='1' stop-color='#e2e8f0'/></linearGradient>
+<linearGradient id='ilGreen' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#34d399'/><stop offset='1' stop-color='#16a34a'/></linearGradient>
+<filter id='ilShadow' x='-20%' y='-20%' width='140%' height='150%'><feDropShadow dx='0' dy='10' stdDeviation='8' flood-color='#1e1b4b' flood-opacity='0.35'/></filter>
+</defs>
+<ellipse cx='160' cy='200' rx='120' ry='12' fill='#0f172a' opacity='0.18'/>
+<path d='M70 40 L250 40 L262 52 L262 186 L82 186 Z' fill='#312e81'/>
+<g filter='url(#ilShadow)'>
+<rect x='76' y='34' width='180' height='150' rx='14' fill='url(#ilBoard)'/>
+<rect x='92' y='58' width='148' height='116' rx='8' fill='url(#ilPaper)'/>
+</g>
+<rect x='136' y='24' width='48' height='22' rx='6' fill='#cbd5e1'/>
+<rect x='146' y='18' width='28' height='12' rx='4' fill='#64748b'/>
+<circle cx='110' cy='74' r='8' fill='url(#ilGreen)'/>
+<path d='M106 74 l3 3 l6 -6' stroke='#ffffff' stroke-width='2' fill='none' stroke-linecap='round'/>
+<rect x='126' y='69' width='90' height='10' rx='5' fill='#cbd5e1'/>
+<circle cx='110' cy='98' r='8' fill='url(#ilGreen)'/>
+<path d='M106 98 l3 3 l6 -6' stroke='#ffffff' stroke-width='2' fill='none' stroke-linecap='round'/>
+<rect x='126' y='93' width='70' height='10' rx='5' fill='#cbd5e1'/>
+<circle cx='110' cy='122' r='8' fill='#f97316'/>
+<rect x='126' y='117' width='84' height='10' rx='5' fill='#cbd5e1'/>
+<circle cx='110' cy='146' r='8' fill='url(#ilGreen)'/>
+<path d='M106 146 l3 3 l6 -6' stroke='#ffffff' stroke-width='2' fill='none' stroke-linecap='round'/>
+<rect x='126' y='141' width='60' height='10' rx='5' fill='#cbd5e1'/>
+<g filter='url(#ilShadow)'>
+<circle cx='262' cy='56' r='26' fill='url(#ilGreen)'/>
+<path d='M252 56 l7 7 l13 -14' stroke='#ffffff' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/>
+</g>
+<g transform='rotate(-30 60 170)' filter='url(#ilShadow)'>
+<rect x='30' y='162' width='70' height='12' rx='3' fill='#fbbf24'/>
+<polygon points='100,162 112,168 100,174' fill='#f59e0b'/>
+<rect x='24' y='162' width='8' height='12' fill='#f472b6'/>
+</g>
+</svg>`;
+}
+
+function globeHtml(){
+  const meridians = [0, 14, 28, 42, 56].map(x => `<ellipse cx='${x}' cy='22' rx='6' ry='20' fill='none' stroke='#e0f2fe' stroke-opacity='.6' stroke-width='1'/>`).join('');
+  const parallels = [10, 22, 34].map(y => `<line x1='-20' x2='80' y1='${y}' y2='${y}' stroke='#e0f2fe' stroke-opacity='.45' stroke-width='1'/>`).join('');
+  return `<div class='globe' title='Rotating globe'><svg viewBox='0 0 44 44' aria-hidden='true'>` +
+    `<defs><radialGradient id='globShade' cx='35%' cy='30%' r='75%'><stop offset='0' stop-color='#bae6fd'/><stop offset='0.5' stop-color='#0ea5e9'/><stop offset='1' stop-color='#1e3a8a'/></radialGradient>` +
+    `<clipPath id='globClip'><circle cx='22' cy='22' r='20'/></clipPath></defs>` +
+    `<circle cx='22' cy='22' r='20' fill='url(#globShade)'/>` +
+    `<g clip-path='url(#globClip)'><g class='globe-lines'>${parallels}${meridians}${meridians.replace(/cx='(\d+)'/g, (m, x) => `cx='${Number(x) + 70}'`)}</g></g>` +
+    `<circle cx='22' cy='22' r='20' fill='none' stroke='#0c4a6e' stroke-opacity='.45'/>` +
+    `<ellipse cx='15' cy='12' rx='7' ry='4' fill='#ffffff' opacity='.35' transform='rotate(-25 15 12)'/>` +
+    `</svg></div>`;
+}
+
+function qrCard(){
+  setTimeout(makeQr, 0);
+  return `<div class='card'><h2>Access QR code</h2>` +
+    `<p class='muted' style='margin-top:0'>Scan this code with a phone camera to open the attendance tracker. Print the page or take a screenshot to share it.</p>` +
+    `<div id='qrBox' style='background:#ffffff;display:inline-block;padding:12px;border-radius:8px'></div></div>`;
+}
+
+function makeQr(){
+  const el = document.getElementById('qrBox');
+  if (!el || !window.QRCode) return;
+  el.innerHTML = '';
+  new QRCode(el, {text: window.location.href, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M});
+}
+
+function loginQr(){
+  setTimeout(makeQr, 0);
+  return `<div class='card' style='flex:0 0 auto;margin:40px 0 0 0;text-align:center'>` +
+    `<div class='muted' style='margin-bottom:10px'>Scan to open the attendance tracker</div>` +
+    `<div id='qrBox' style='background:#ffffff;display:inline-block;padding:12px;border-radius:8px'></div></div>`;
+}
+
+function illustrationPanel(){
+  return `<div style='flex:0 0 300px;max-width:100%;margin-top:40px'>${illustration3d()}</div>`;
+}
+
+const FORMULA_DEFAULTS = {
+  week: {target: 3, expr: 'WFO / TARGET * 100'},
+  month: {target: 13, expr: 'WFO / TARGET * 100'},
+  quarter: {target: 36, expr: 'WFO / TARGET * 100'},
+  year: {target: 144, expr: 'WFO / TARGET * 100'}
+};
+const FORMULA_NAMES = {week: 'Weekly', month: 'Monthly', quarter: 'Quarterly', year: 'Yearly'};
+const FORMULA_FUNCS = {min: Math.min, max: Math.max, round: Math.round, abs: Math.abs};
+
+function ruleList(key){
+  const v = db.formulas && db.formulas[key];
+  if (!v) return [];
+  return Array.isArray(v) ? v : [{from: '1900-01-01', target: v.target, expr: v.expr}];
+}
+
+// The rule in effect on a date: the latest rule whose effective date is on or before it
+function formulaFor(key, dateStr){
+  const d = dateStr || todayStr();
+  const rules = ruleList(key)
+    .filter(r => r.from <= d)
+    .sort((a, b) => a.from < b.from ? -1 : a.from > b.from ? 1 : 0);
+  return rules.length ? rules[rules.length - 1] : FORMULA_DEFAULTS[key];
+}
+
+function tokenize(src){
+  const out = [];
+  let i = 0;
+  while (i < src.length) {
+    const ch = src[i];
+    if (ch === ' ' || ch === '\t') { i++; continue; }
+    if ((ch >= '0' && ch <= '9') || ch === '.') {
+      let j = i;
+      while (j < src.length && ((src[j] >= '0' && src[j] <= '9') || src[j] === '.')) j++;
+      const n = Number(src.slice(i, j));
+      if (isNaN(n)) throw new Error('Invalid number ' + src.slice(i, j));
+      out.push({t: 'num', v: n});
+      i = j;
+      continue;
+    }
+    if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch === '_') {
+      let j = i;
+      while (j < src.length && ((src[j] >= 'A' && src[j] <= 'Z') || (src[j] >= 'a' && src[j] <= 'z') || src[j] === '_' || (src[j] >= '0' && src[j] <= '9'))) j++;
+      out.push({t: 'id', v: src.slice(i, j)});
+      i = j;
+      continue;
+    }
+    if ('+-*/(),'.indexOf(ch) >= 0) { out.push({t: 'op', v: ch}); i++; continue; }
+    throw new Error('Character not allowed: ' + ch);
+  }
+  return out;
+}
+
+// Safe evaluator: numbers, names from vars, + - * / (), min/max/round/abs. No JavaScript is executed.
+function evalFormula(src, vars){
+  const tokens = tokenize(src);
+  if (!tokens.length) throw new Error('The formula is empty');
+  let pos = 0;
+  const peekOp = v => pos < tokens.length && tokens[pos].t === 'op' && tokens[pos].v === v;
+  function parsePrimary(){
+    const tk = tokens[pos];
+    if (!tk) throw new Error('The formula ends too early');
+    if (tk.t === 'num') { pos++; return tk.v; }
+    if (tk.t === 'id') {
+      pos++;
+      if (peekOp('(')) {
+        pos++;
+        const args = [parseExpr()];
+        while (peekOp(',')) { pos++; args.push(parseExpr()); }
+        if (!peekOp(')')) throw new Error('Missing )');
+        pos++;
+        const f = FORMULA_FUNCS[tk.v.toLowerCase()];
+        if (!f) throw new Error('Unknown function ' + tk.v);
+        return f.apply(null, args);
+      }
+      const name = tk.v.toUpperCase();
+      if (!(name in vars)) throw new Error('Unknown name ' + tk.v);
+      return vars[name];
+    }
+    if (peekOp('(')) {
+      pos++;
+      const v = parseExpr();
+      if (!peekOp(')')) throw new Error('Missing )');
+      pos++;
+      return v;
+    }
+    throw new Error('Unexpected ' + tk.v);
+  }
+  function parseFactor(){
+    if (peekOp('-')) { pos++; return -parseFactor(); }
+    return parsePrimary();
+  }
+  function parseTerm(){
+    let v = parseFactor();
+    while (peekOp('*') || peekOp('/')) {
+      const op = tokens[pos++].v;
+      const r = parseFactor();
+      v = op === '*' ? v * r : (r === 0 ? 0 : v / r);
+    }
+    return v;
+  }
+  function parseExpr(){
+    let v = parseTerm();
+    while (peekOp('+') || peekOp('-')) {
+      const op = tokens[pos++].v;
+      const r = parseTerm();
+      v = op === '+' ? v + r : v - r;
+    }
+    return v;
+  }
+  const result = parseExpr();
+  if (pos < tokens.length) throw new Error('Unexpected ' + tokens[pos].v);
+  if (!isFinite(result)) throw new Error('The result is not a number');
+  return result;
+}
+
+function rateFor(key, c, days){
+  const f = formulaFor(key, days.length ? days[0] : undefined);
+  try {
+    return Math.round(evalFormula(f.expr, {WFO: c.O, WFH: c.H, LEAVE: c.V, UNMARKED: c.U, DAYS: days.length, TARGET: f.target}));
+  } catch (err) {
+    return Math.round(c.O / f.target * 100);
+  }
+}
+
+function formulaCard(){
+  const keys = ['week', 'month', 'quarter', 'year'];
+  const today = todayStr();
+  const current = keys.map(k => {
+    const f = formulaFor(k);
+    return `<tr><td>${FORMULA_NAMES[k]}</td><td>${f.target}</td><td>${esc(f.expr)}</td><td class='muted'>${f.from || 'Default'}</td></tr>`;
+  }).join('');
+  const inputs = keys.map(k => {
+    const f = formulaFor(k);
+    return `<tr><td>${FORMULA_NAMES[k]}</td>` +
+      `<td><input type='number' min='0.1' step='0.5' id='fT-${k}' value='${f.target}' style='width:80px'></td>` +
+      `<td><input type='date' id='fD-${k}' value='${today}'></td>` +
+      `<td><input id='fE-${k}' value='${esc(f.expr)}' style='width:100%;min-width:200px'></td></tr>`;
+  }).join('');
+  const history = keys.map(k => ruleList(k).map(r =>
+    `<tr><td>${FORMULA_NAMES[k]}</td><td>${r.from}</td><td>${r.target}</td><td>${esc(r.expr)}</td>` +
+    `<td style='text-align:right'><button class='btn danger' data-k='${k}' data-f='${r.from}' onclick='removeRule(this.dataset.k, this.dataset.f)'>Remove</button></td></tr>`
+  ).join('')).join('');
+  return `<div class='card'><h2>Attendance formulas</h2>` +
+    `<p class='muted' style='margin-top:0'>Names: <b>WFO</b>, <b>WFH</b>, <b>LEAVE</b>, <b>UNMARKED</b>, <b>DAYS</b>, <b>TARGET</b>. Operators + - * / and brackets. Functions: min, max, round, abs.</p>` +
+    `<h2 style='font-size:15px'>Rules in effect today</h2><div class='wrap'><table><thead><tr><th>Period</th><th>Target</th><th>Formula</th><th>Effective from</th></tr></thead><tbody>${current}</tbody></table></div>` +
+    `<h2 style='font-size:15px;margin-top:14px'>Add or change a rule</h2>` +
+    `<p class='muted' style='margin-top:0'>A rule applies to periods that start on or after its effective date, until a later rule takes over. Earlier periods keep the rule that applied then. Saving with the same effective date replaces that rule.</p>` +
+    `<div class='wrap'><table><thead><tr><th>Period</th><th>Target</th><th>Effective from</th><th>Formula</th></tr></thead><tbody>${inputs}</tbody></table></div>` +
+    `<div class='row' style='margin-top:12px'><button class='btn' onclick='saveFormulas()'>Save rules</button>` +
+    `<button class='btn ghost' onclick='resetFormulas()'>Reset to defaults</button></div>` +
+    (history ? `<h2 style='font-size:15px;margin-top:14px'>Rule history</h2><div class='wrap'><table><thead><tr><th>Period</th><th>Effective from</th><th>Target</th><th>Formula</th><th></th></tr></thead><tbody>${history}</tbody></table></div>` : '') +
+    `</div>`;
+}
+
+function saveFormulas(){
+  if (!can('manage')) return;
+  const collected = {};
+  for (const k of ['week', 'month', 'quarter', 'year']) {
+    const name = FORMULA_NAMES[k];
+    const target = Number(document.getElementById('fT-' + k).value);
+    const from = document.getElementById('fD-' + k).value;
+    const expr = document.getElementById('fE-' + k).value.trim();
+    if (!(target > 0)) { alert('The target for ' + name + ' must be a number above 0.'); return; }
+    if (!validDate(from)) { alert('Choose an effective date for ' + name + '.'); return; }
+    try {
+      evalFormula(expr, {WFO: 2, WFH: 1, LEAVE: 1, UNMARKED: 0, DAYS: 7, TARGET: target});
+    } catch (err) {
+      alert('The ' + name + ' formula is not valid: ' + err.message);
+      return;
+    }
+    const rules = ruleList(k).filter(r => r.from !== from);
+    rules.push({from, target, expr});
+    rules.sort((a, b) => a.from < b.from ? -1 : a.from > b.from ? 1 : 0);
+    collected[k] = rules;
+  }
+  db.formulas = Object.assign({}, db.formulas || {}, collected);
+  save();
+  render();
+}
+
+function removeRule(k, from){
+  if (!can('manage')) return;
+  if (!confirm('Remove this rule? Periods that used it will fall back to the previous rule.')) return;
+  db.formulas = Object.assign({}, db.formulas || {}, {[k]: ruleList(k).filter(r => r.from !== from)});
+  save();
+  render();
+}
+
+function resetFormulas(){
+  if (!can('manage')) return;
+  if (!confirm('Reset all attendance formulas to the defaults? All rule history will be removed.')) return;
+  db.formulas = {};
+  save();
+  render();
+}
+
+function formulaSummary(){
+  const names = {week: 'Weekly', month: 'Monthly', quarter: 'Quarterly', year: 'Yearly'};
+  const parts = Object.keys(names).map(k => {
+    const f = formulaFor(k);
+    return names[k] + ' ' + esc(f.expr.split('TARGET').join(String(f.target)));
+  });
+  return 'Attendance formulas: ' + parts.join(', ') + '. Leave and unmarked days are excluded.';
+}
+
+/* ---------- Render ---------- */
+function render(){
+  syncMinWfo();
+  renderHeader();
+  if (!session) { renderAuth(); return; }
+  nav();
+  if (tab === 'daily') { viewDaily(); addHolidayPanel(); }
+  else if (tab === 'dash') viewDash();
+  else if (tab === 'folders') viewFolders();
+  else if (tab === 'analytics') viewAnalytics();
+  else if (tab === 'weekly') viewWeekly();
+  else if (tab === 'report') viewReport();
+  else if (tab === 'access') viewAccess();
+  else viewEmps();
+  enhanceTables();
+}
+
+load();
+render();
+</script>
+</body>
+</html>
