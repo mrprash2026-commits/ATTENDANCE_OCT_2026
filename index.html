@@ -1525,7 +1525,7 @@ function addHolidayPanel(){
   const app = document.getElementById('app');
   const inner = app.innerHTML;
   app.innerHTML = `<div style='display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap'>` +
-    `<aside style='flex:0 0 240px;max-width:100%'>${holidayPanelHtml()}</aside>` +
+    `<aside style='flex:0 0 240px;max-width:100%'>${checkinQrPanel()}${holidayPanelHtml()}</aside>` +
     `<div style='flex:1 1 420px;min-width:0'>${inner}</div></div>`;
 }
 
@@ -2058,21 +2058,38 @@ async function importFolder(input){
 let kioskMode = false;
 let kioskTimer = null;
 let pendingCheckin = null;
+let checkinResult = null;
+let checkinPickEmp = null;
+let bootPromise = null;
 const CHECKIN_BUCKET_MS = 5 * 60 * 1000;
 
 function checkinCard(){
   if (!can('manage')) return '';
   const on = !!(db.meta && db.meta.checkinSecret);
-  return `<div class='card'><h2>Check-in kiosk</h2>` +
-    `<p class='muted' style='margin-top:0'>Employees scan a code on the office screen to mark Work from office for today. The code changes every 5 minutes, and only signed-in employees can check in.</p>` +
-    `<div class='row'>` + (on
-      ? `<button class='btn' onclick='openKiosk()'>Open kiosk screen</button><button class='btn ghost' onclick='disableKiosk()'>Turn off</button>`
-      : `<button class='btn' onclick='enableKiosk()'>Turn on check-in</button>`) + `</div></div>`;
+  if (!on) {
+    return `<div class='card'><h2>Check-in codes</h2>` +
+      `<p class='muted' style='margin-top:0'>Turn on check-in to create a personal code for each employee. Employees scan their code to mark Work from office for today, without signing in.</p>` +
+      `<div class='row'><button class='btn' onclick='enableKiosk()'>Turn on check-in</button></div></div>`;
+  }
+  if (!db.employees.length) return `<div class='card muted'>Add employees first, then print their check-in codes here.</div>`;
+  const emp = db.employees.find(e => e.id === checkinPickEmp) || db.employees[0];
+  setTimeout(refreshEmpQr, 0);
+  return `<div class='card'><h2>Check-in codes</h2>` +
+    `<p class='muted' style='margin-top:0'>Each employee's code marks them as Work from office when scanned. Print or save it for the employee. Anyone holding a code can check in as that employee.</p>` +
+    `<div class='row'><select onchange='checkinPickEmp=this.value;render()'>${db.employees.map(e => `<option value='${e.id}'${e.id === emp.id ? ' selected' : ''}>${esc(e.name)}</option>`).join('')}</select>` +
+    `<button class='btn ghost' onclick='disableKiosk()'>Turn off</button>` +
+    `<button class='btn ghost' onclick='enableKiosk()'>Reset all codes</button></div>` +
+    `<div style='text-align:center;margin-top:10px'><div style='font-weight:600;margin-bottom:6px'>${esc(emp.name)}</div>` +
+    `<div id='empQr' data-emp='${emp.id}' style='display:inline-block;background:#ffffff;padding:12px;border-radius:8px'></div></div></div>`;
 }
 
 function enableKiosk(){
   if (!can('manage')) return;
-  if (!confirm('Turn on check-in? Employees will be able to mark Work from office by scanning the kiosk code.')) return;
+  const hadCodes = !!(db.meta && db.meta.checkinSecret);
+  const msg = hadCodes
+    ? 'Reset all check-in codes? Every printed code will stop working.'
+    : 'Turn on check-in? Each employee will get a personal code.';
+  if (!confirm(msg)) return;
   db.meta = Object.assign({}, db.meta || {}, {checkinSecret: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)});
   save();
   render();
@@ -2122,29 +2139,89 @@ async function refreshKiosk(){
 async function processCheckin(){
   const token = pendingCheckin;
   pendingCheckin = null;
-  if (!session) return;
-  if (!session.empId) { alert('Your account is not linked to an employee record, so you cannot check in.'); return; }
-  if (!db.meta || !db.meta.checkinSecret) { alert('Check-in is not turned on.'); return; }
-  const b = Math.floor(Date.now() / CHECKIN_BUCKET_MS);
-  let valid = false;
-  for (const bucket of [b, b - 1]) {
-    if (await checkinToken(db.meta.checkinSecret, bucket) === token) { valid = true; break; }
+  if (bootPromise) await bootPromise;
+  let result;
+  if (!db.meta || !db.meta.checkinSecret) {
+    result = {ok: false, msg: 'Check-in is not turned on. Ask an Admin.'};
+  } else {
+    let who = null;
+    for (const e of db.employees) {
+      if (await empToken(e.id) === token) { who = e; break; }
+    }
+    if (!who && session && session.empId && await kioskCodeValid(token)) {
+      who = db.employees.find(e => e.id === session.empId) || null;
+    }
+    if (!who) {
+      result = {ok: false, msg: 'This code was not recognised. Ask an Admin for your check-in code.'};
+    } else {
+      const d = todayStr();
+      db.records[d] = db.records[d] || {};
+      db.records[d][who.id] = 'O';
+      save();
+      result = {ok: true, msg: who.name + ' is checked in: marked Work from office for today.'};
+    }
   }
-  if (!valid) { alert('This code has expired. Scan the code currently on the kiosk screen.'); return; }
-  const d = todayStr();
-  db.records[d] = db.records[d] || {};
-  db.records[d][session.empId] = 'O';
-  save();
-  alert('Checked in: marked Work from office for today.');
+  checkinResult = result;
   render();
+}
+
+async function empToken(id){
+  return (await sha(db.meta.checkinSecret + ':emp:' + id)).slice(0, 16);
+}
+
+// Kiosk codes (rotating, office-wide) are accepted only from a signed-in employee
+async function kioskCodeValid(token){
+  const b = Math.floor(Date.now() / CHECKIN_BUCKET_MS);
+  for (const bucket of [b, b - 1]) {
+    if (await checkinToken(db.meta.checkinSecret, bucket) === token) return true;
+  }
+  return false;
+}
+
+function renderCheckinResult(){
+  document.getElementById('nav').innerHTML = '';
+  const r = checkinResult;
+  document.getElementById('app').innerHTML =
+    `<div class='card' style='max-width:420px;margin:40px auto;text-align:center'>` +
+    `<h2 style='color:${r.ok ? 'var(--P)' : 'var(--A)'}'>${r.ok ? 'Check-in recorded' : 'Check-in failed'}</h2>` +
+    `<p>${esc(r.msg)}</p><button class='btn' onclick='dismissCheckin()'>Open the tracker</button></div>`;
+}
+
+function dismissCheckin(){
+  checkinResult = null;
+  try { history.replaceState(null, '', window.location.pathname); } catch (err) {}
+  render();
+}
+
+let empQrTimer = null;
+
+function checkinQrPanel(){
+  if (!session || !session.empId) return '';
+  if (!db.meta || !db.meta.checkinSecret) {
+    return `<div class='card'><h2>Office check-in</h2><p class='muted' style='margin-bottom:0'>Check-in is not turned on. Ask an Admin to enable it.</p></div>`;
+  }
+  setTimeout(refreshEmpQr, 0);
+  return `<div class='card' style='text-align:center'><h2>Office check-in</h2>` +
+    `<p class='muted' style='margin-top:0;font-size:12px'>Your personal code. Scan it to mark Work from office for today.</p>` +
+    `<div id='empQr' data-emp='${session.empId}' style='display:inline-block;background:#ffffff;padding:10px;border-radius:8px'></div></div>`;
+}
+
+async function refreshEmpQr(){
+  const el = document.getElementById('empQr');
+  if (!el || !window.QRCode || !db.meta || !db.meta.checkinSecret) return;
+  const token = await empToken(el.dataset.emp);
+  el.innerHTML = '';
+  const base = window.location.href.split('?')[0];
+  new QRCode(el, {text: base + '?checkin=' + token, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M});
 }
 
 /* ---------- Render ---------- */
 function render(){
   syncMinWfo();
   renderHeader();
-  if (!session) { renderAuth(); return; }
+  if (checkinResult) { renderCheckinResult(); return; }
   if (pendingCheckin) processCheckin();
+  if (!session) { renderAuth(); return; }
   if (kioskMode && can('manage')) { nav(); renderKiosk(); return; }
   nav();
   if (tab === 'daily') { viewDaily(); addHolidayPanel(); }
@@ -2160,7 +2237,7 @@ function render(){
 
 load();
 render();
-bootShared();
+bootPromise = bootShared();
 const checkinParam = new URLSearchParams(window.location.search).get('checkin');
 if (checkinParam) { pendingCheckin = checkinParam; render(); }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) pullShared(false); });
