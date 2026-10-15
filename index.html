@@ -65,6 +65,23 @@ h2{font-size:17px;margin:4px 0 12px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
+// Outside claude.ai (plain browser or file), there is no Claude runtime: use ordinary browser downloads and keep data on this device.
+if (!window.claude) {
+  window.claude = {
+    use: async (cap) => cap !== 'downloads' ? null : {
+      save: async ({ filename, data }) => {
+        const url = URL.createObjectURL(new Blob([data]));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      }
+    }
+  };
+}
 const KEY = 'attendance-tracker-v1';
 const STATUS = {
   V: {label: 'Leave',   color: 'var(--V)'},
@@ -117,7 +134,10 @@ function load(){
   if (!db.holidays) db.holidays = {};
   Object.values(db.records).forEach(day => Object.keys(day).forEach(id => { if (day[id] === 'P' || day[id] === 'L' || day[id] === 'A' || day[id] === 'X') delete day[id]; }));
 }
-function save(){ try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {} }
+function save(){
+  try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {}
+  queuePush();
+}
 
 function go(t){ tab = t; if (t !== 'dash') selEmp = null; render(); }
 
@@ -226,6 +246,7 @@ function viewDaily(){
       '</tbody></table></div>';
     html += '<p class="muted">Click a selected status again to clear it.</p>';
     html += attendanceImportCard();
+    html += folderImportCard();
     html += reminderCard();
   }
   document.getElementById('app').innerHTML = html;
@@ -305,7 +326,7 @@ function viewEmps(){
     '<input id="n-email" type="email" placeholder="Email (for reminders)" style="flex:1;min-width:180px">' +
     '<button class="btn" onclick="addEmp()">Add</button></div></div>';
 
-  if (can('manage')) html += qrCard() + formulaCard() + holidayCard() + backupCard();
+  if (can('manage')) html += checkinCard() + qrCard() + formulaCard() + holidayCard() + backupCard();
   if (can('import')) html += '<div class="card"><h2>Import from Excel</h2>' +
     '<p class="muted" style="margin-top:0">Upload an .xlsx, .xls, or .csv file whose first row is a header. Required column: <b>Name</b>. Optional column: <b>Department</b>. Names that already exist are skipped.</p>' +
     '<div class="row"><input type="file" accept=".xlsx,.xls,.csv" onchange="importExcel(this)"></div>' +
@@ -973,10 +994,17 @@ async function exportExcel(){
 let bkMsg = '';
 
 function backupCard(){
-  return '<div class="card"><h2>Backup and restore</h2><p class="muted" style="margin-top:0">A backup saves all employees and attendance records to an Excel file. Login accounts and passwords are not included. Restoring adds employees that are missing (matched by name) and replaces attendance for the dates in the file.</p>' +
-    '<div class="row"><button class="btn" onclick="exportBackup()">Download backup</button>' +
-    '<input type="file" accept=".xlsx,.xls" onchange="restoreBackup(this)"></div>' +
-    (bkMsg ? '<div class="muted">' + esc(bkMsg) + '</div>' : '') + '</div>';
+  const last = db.meta && db.meta.lastBackup ? new Date(db.meta.lastBackup) : null;
+  const days = last ? Math.floor((Date.now() - last.getTime()) / 86400000) : null;
+  let status;
+  if (!last) status = `<div style='color:var(--A);font-weight:600'>No backup saved yet. Download one now.</div>`;
+  else if (days >= 7) status = `<div style='color:var(--L);font-weight:600'>Last backup was ${days} day(s) ago. Download a new one.</div>`;
+  else status = `<div class='muted'>Last backup: ${esc(last.toLocaleString())}</div>`;
+  return `<div class='card'><h2>Backup and restore</h2>${status}` +
+    `<p class='muted' style='margin-top:8px'>The Excel backup holds employees, attendance, holidays, attendance formulas, and login accounts. Passwords are stored only as hashes, but keep the file private. Logo and background images are not included.</p>` +
+    `<div class='row'><button class='btn' onclick='exportBackup()'>Download backup</button>` +
+    `<input type='file' accept='.xlsx,.xls' onchange='restoreBackup(this)'></div>` +
+    (bkMsg ? `<div class='muted'>${esc(bkMsg)}</div>` : '') + `</div>`;
 }
 
 async function exportBackup(){
@@ -988,17 +1016,32 @@ async function exportBackup(){
     const k = (db.records[d] || {})[e.id];
     if (k) att.push({Employee: e.name, Date: d, Status: STATUS[k].label});
   }));
+  const users = db.users.map(u => {
+    const link = db.employees.find(e => e.id === u.empId);
+    return {Username: u.username, Name: u.name, Role: u.role, EmployeeName: link ? link.name : '', PasswordHash: u.hash, RecoveryHash: u.recovery || ''};
+  });
+  const settings = [
+    {Key: 'holidays', Value: JSON.stringify(db.holidays || {})},
+    {Key: 'formulas', Value: JSON.stringify(db.formulas || {})}
+  ];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(emps.length ? emps : [{Name: '', Department: ''}]), 'Employees');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(emps.length ? emps : [{Name: '', Department: '', Email: ''}]), 'Employees');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(att.length ? att : [{Employee: '', Date: '', Status: ''}]), 'Attendance');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(users.length ? users : [{Username: '', Name: '', Role: '', EmployeeName: '', PasswordHash: '', RecoveryHash: ''}]), 'Users');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(settings), 'Settings');
   const data = XLSX.write(wb, {bookType: 'xlsx', type: 'array'});
   const dl = window.claude ? await window.claude.use('downloads') : null;
-  if (!dl) { alert('Saving files is not available in this view.'); return; }
+  if (!dl) { bkMsg = 'Downloads are not available in this view. Open the page in a new tab from the link and try again.'; render(); return; }
   try {
     await dl.save({filename: 'attendance-backup-' + todayStr() + '.xlsx', data});
-    bkMsg = 'Backup saved with ' + emps.length + ' employee(s) and ' + att.length + ' attendance record(s).';
+    db.meta = Object.assign({}, db.meta || {}, {lastBackup: new Date().toISOString()});
+    save();
+    bkMsg = 'Backup saved: ' + emps.length + ' employee(s), ' + att.length + ' attendance record(s), ' + users.length + ' user account(s).';
   } catch (err) {
-    if (err && err.code !== 'declined') alert('The backup could not be saved: ' + (err.message || err.code));
+    bkMsg = err && err.code === 'declined'
+      ? 'Download was declined. Allow downloads for this page (Permissions menu) and click Download backup again.'
+      : 'The backup could not be saved: ' + ((err && (err.message || err.code)) || 'unknown error') + '.';
+    render();
   }
   render();
 }
@@ -1009,7 +1052,7 @@ async function restoreBackup(input){
   input.value = '';
   if (!file) return;
   if (typeof XLSX === 'undefined') { bkMsg = 'The Excel reader could not load. Check your connection and try again.'; render(); return; }
-  if (!confirm('Restore will add missing employees and overwrite attendance for the dates in this file. Continue?')) return;
+  if (!confirm('Restore will add missing employees, users, and holidays, replace saved formulas if the file has them, and overwrite attendance for the dates in this file. Continue?')) return;
   let wb;
   try {
     wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), {type: 'array'});
@@ -1023,10 +1066,9 @@ async function restoreBackup(input){
     render();
     return;
   }
-  const empRows = wb.Sheets['Employees'] ? XLSX.utils.sheet_to_json(wb.Sheets['Employees'], {defval: ''}) : [];
-  const attRows = wb.Sheets['Attendance'] ? XLSX.utils.sheet_to_json(wb.Sheets['Attendance'], {defval: ''}) : [];
+  const sheet = name => wb.Sheets[name] ? XLSX.utils.sheet_to_json(wb.Sheets[name], {defval: ''}) : [];
   let addedEmp = 0;
-  empRows.forEach(r => {
+  sheet('Employees').forEach(r => {
     const name = String(r.Name || '').trim();
     if (!name || db.employees.some(e => e.name.trim().toLowerCase() === name.toLowerCase())) return;
     db.employees.push({id: uid(), name, dept: String(r.Department || '').trim() || 'General', email: String(r.Email || '').trim()});
@@ -1035,7 +1077,7 @@ async function restoreBackup(input){
   const byName = new Map(db.employees.map(e => [e.name.trim().toLowerCase(), e.id]));
   let ok = 0, badDate = 0, badStatus = 0;
   const unknown = new Set();
-  attRows.forEach(r => {
+  sheet('Attendance').forEach(r => {
     const name = String(r.Employee || '').trim();
     if (!name && String(r.Date) === '' && String(r.Status) === '') return;
     const empId = byName.get(name.toLowerCase());
@@ -1048,9 +1090,29 @@ async function restoreBackup(input){
     db.records[d][empId] = st;
     ok++;
   });
+  let addedUsers = 0;
+  sheet('Users').forEach(r => {
+    const username = String(r.Username || '').trim().toLowerCase();
+    const hash = String(r.PasswordHash || '').trim();
+    if (!username || !hash || db.users.some(u => u.username === username)) return;
+    const role = Object.keys(ROLES).find(k => k.toLowerCase() === String(r.Role || '').trim().toLowerCase()) || 'Viewer';
+    const link = String(r.EmployeeName || '').trim().toLowerCase();
+    const emp = link ? db.employees.find(e => e.name.trim().toLowerCase() === link) : null;
+    db.users.push({id: uid(), username, name: String(r.Name || username).trim(), role, empId: emp && role === 'Employee' ? emp.id : null, hash, recovery: String(r.RecoveryHash || '').trim() || undefined});
+    addedUsers++;
+  });
+  let settingsOk = 0;
+  sheet('Settings').forEach(r => {
+    try {
+      const val = JSON.parse(String(r.Value || ''));
+      if (r.Key === 'holidays' && val && typeof val === 'object') { db.holidays = Object.assign({}, db.holidays || {}, val); settingsOk++; }
+      if (r.Key === 'formulas' && val && typeof val === 'object' && Object.keys(val).length) { db.formulas = val; settingsOk++; }
+    } catch (err) { /* ignore unreadable settings */ }
+  });
   save();
   const names = [...unknown];
-  bkMsg = 'Restore complete: added ' + addedEmp + ' employee(s) and restored ' + ok + ' attendance record(s).' +
+  bkMsg = 'Restore complete: added ' + addedEmp + ' employee(s), ' + addedUsers + ' user account(s), and restored ' + ok + ' attendance record(s).' +
+    (settingsOk ? ' Holidays and formulas restored.' : '') +
     (names.length ? ' Unknown employee name(s) in Attendance: ' + names.slice(0, 10).join(', ') + '.' : '') +
     (badDate ? ' ' + badDate + ' row(s) had an invalid date.' : '') +
     (badStatus ? ' ' + badStatus + ' row(s) had an unknown status.' : '');
@@ -1842,11 +1904,248 @@ function formulaSummary(){
   return 'Attendance formulas: ' + parts.join(', ') + '. Leave and unmarked days are excluded.';
 }
 
+/* ---------- Shared storage (Artifact db) ---------- */
+let sharedApi = null;
+let pushTimer = null;
+let lastSent = {};
+let writing = Promise.resolve();
+let syncWarned = false;
+
+// Split the data into documents that each stay well under the 256 KiB limit
+function sharedDocs(){
+  const out = {
+    'tracker/employees': {employees: db.employees},
+    'tracker/users': {users: db.users},
+    'tracker/settings': {holidays: db.holidays || {}, formulas: db.formulas || {}, meta: db.meta || {}}
+  };
+  const months = {};
+  Object.keys(db.records).forEach(d => {
+    const m = d.slice(0, 7);
+    months[m] = months[m] || {};
+    months[m][d] = db.records[d];
+  });
+  Object.keys(months).forEach(m => { out['tracker/att-' + m] = {records: months[m]}; });
+  return out;
+}
+
+function reportSync(err){
+  if (syncWarned) return;
+  syncWarned = true;
+  alert('Shared storage could not save your changes' + (err && err.code ? ' (' + err.code + ')' : '') +
+    '. They are kept on this device. Download a backup to be safe.');
+}
+
+function queuePush(){
+  if (!sharedApi) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushShared, 400);
+}
+
+function pushShared(){
+  if (!sharedApi) return;
+  const docs = sharedDocs();
+  Object.keys(lastSent).forEach(p => {
+    if (!(p in docs) && p.indexOf('tracker/att-') === 0) docs[p] = {records: {}};
+  });
+  Object.keys(docs).forEach(p => {
+    const json = JSON.stringify(docs[p]);
+    if (lastSent[p] === json) return;
+    lastSent[p] = json;
+    writing = writing.then(() => sharedApi.doc(p).set(docs[p])).catch(reportSync);
+  });
+}
+
+async function pullShared(seedIfEmpty){
+  if (!sharedApi || pushTimer) return;
+  let snap;
+  try { snap = await sharedApi.collection('tracker').get(); }
+  catch (err) { reportSync(err); return; }
+  const got = {};
+  snap.docs.forEach(d => { if (d.exists) got[d.id] = d.data() || {}; });
+  if (!got.employees && !got.users && !got.settings) {
+    if (seedIfEmpty) { lastSent = {}; pushShared(); }
+    return;
+  }
+  if (got.employees) db.employees = got.employees.employees || [];
+  if (got.users) db.users = got.users.users || [];
+  if (got.settings) {
+    db.holidays = got.settings.holidays || {};
+    db.formulas = got.settings.formulas || {};
+    db.meta = Object.assign({}, db.meta || {}, got.settings.meta || {});
+  }
+  const records = {};
+  Object.keys(got).filter(id => id.indexOf('att-') === 0).forEach(id => Object.assign(records, got[id].records || {}));
+  db.records = records;
+  localStorage.setItem(KEY, JSON.stringify(db));
+  lastSent = {};
+  const docs = sharedDocs();
+  Object.keys(docs).forEach(p => { lastSent[p] = JSON.stringify(docs[p]); });
+  render();
+}
+
+async function bootShared(){
+  try { sharedApi = window.claude ? await window.claude.use('db') : null; }
+  catch (err) { sharedApi = null; }
+  if (!sharedApi) return;
+  await pullShared(true);
+}
+
+let folderMsg = '';
+
+function folderImportCard(){
+  if (!can('mark')) return '';
+  const last = db.meta && db.meta.lastFolderImport ? new Date(db.meta.lastFolderImport) : null;
+  const days = last ? Math.floor((Date.now() - last.getTime()) / 86400000) : null;
+  let status;
+  if (!last) status = `<div style='color:var(--L);font-weight:600'>No folder import yet.</div>`;
+  else if (days >= 1) status = `<div style='color:var(--L);font-weight:600'>Last folder import: ${esc(last.toLocaleString())}. Import today's files.</div>`;
+  else status = `<div class='muted'>Last folder import: ${esc(last.toLocaleString())}</div>`;
+  return `<div class='card'><h2>Import attendance folder</h2>${status}` +
+    `<p class='muted' style='margin-top:8px'>Choose the folder that holds the attendance files. Each file needs the same columns as the Excel import: Employee, Date, Status. Files already imported are skipped.</p>` +
+    `<div class='row'><input type='file' webkitdirectory directory multiple onchange='importFolder(this)'></div>` +
+    (folderMsg ? `<div class='muted'>${esc(folderMsg)}</div>` : '') + `</div>`;
+}
+
+async function importFolder(input){
+  if (!can('mark')) return;
+  const files = Array.from(input.files || []).filter(f => /\.(xlsx|xls|csv)$/i.test(f.name) && f.name.indexOf('~$') !== 0);
+  input.value = '';
+  if (!files.length) { folderMsg = 'No Excel or CSV files were found in that folder.'; render(); return; }
+  if (typeof XLSX === 'undefined') { folderMsg = 'The Excel reader could not load. Check your connection and try again.'; render(); return; }
+  const imported = Object.assign({}, (db.meta && db.meta.importedFiles) || {});
+  const byName = new Map(db.employees.map(e => [e.name.trim().toLowerCase(), e.id]));
+  let fileCount = 0, skipped = 0, failed = 0, ok = 0, badDate = 0, badStatus = 0;
+  const unknown = new Set();
+  for (const f of files) {
+    const key = f.name + '|' + f.size + '|' + f.lastModified;
+    if (imported[key]) { skipped++; continue; }
+    try {
+      const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), {type: 'array'});
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval: ''});
+      rows.forEach(r => {
+        const nameRaw = String(pickRaw(r, ['employee', 'employeename', 'name', 'fullname'])).trim();
+        const dateRaw = pickRaw(r, ['date', 'attendancedate']);
+        const statusRaw = pickRaw(r, ['status', 'attendance']);
+        if (!nameRaw && String(dateRaw) === '' && String(statusRaw) === '') return;
+        const empId = byName.get(nameRaw.toLowerCase());
+        if (!empId) { unknown.add(nameRaw || '(blank name)'); return; }
+        const d = parseDate(dateRaw);
+        if (!d) { badDate++; return; }
+        const st = parseStatus(statusRaw);
+        if (!st) { badStatus++; return; }
+        db.records[d] = db.records[d] || {};
+        db.records[d][empId] = st;
+        ok++;
+      });
+      imported[key] = new Date().toISOString();
+      fileCount++;
+    } catch (err) {
+      failed++;
+    }
+  }
+  db.meta = Object.assign({}, db.meta || {}, {lastFolderImport: new Date().toISOString(), importedFiles: imported});
+  save();
+  const names = [...unknown];
+  folderMsg = 'Imported ' + fileCount + ' new file(s) with ' + ok + ' attendance record(s).' +
+    (skipped ? ' Skipped ' + skipped + ' file(s) already imported.' : '') +
+    (failed ? ' ' + failed + ' file(s) could not be read.' : '') +
+    (names.length ? ' Unknown employee name(s): ' + names.slice(0, 10).join(', ') + '.' : '') +
+    (badDate ? ' ' + badDate + ' row(s) had an invalid date.' : '') +
+    (badStatus ? ' ' + badStatus + ' row(s) had an unknown status.' : '');
+  render();
+}
+
+let kioskMode = false;
+let kioskTimer = null;
+let pendingCheckin = null;
+const CHECKIN_BUCKET_MS = 5 * 60 * 1000;
+
+function checkinCard(){
+  if (!can('manage')) return '';
+  const on = !!(db.meta && db.meta.checkinSecret);
+  return `<div class='card'><h2>Check-in kiosk</h2>` +
+    `<p class='muted' style='margin-top:0'>Employees scan a code on the office screen to mark Work from office for today. The code changes every 5 minutes, and only signed-in employees can check in.</p>` +
+    `<div class='row'>` + (on
+      ? `<button class='btn' onclick='openKiosk()'>Open kiosk screen</button><button class='btn ghost' onclick='disableKiosk()'>Turn off</button>`
+      : `<button class='btn' onclick='enableKiosk()'>Turn on check-in</button>`) + `</div></div>`;
+}
+
+function enableKiosk(){
+  if (!can('manage')) return;
+  if (!confirm('Turn on check-in? Employees will be able to mark Work from office by scanning the kiosk code.')) return;
+  db.meta = Object.assign({}, db.meta || {}, {checkinSecret: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)});
+  save();
+  render();
+}
+
+function disableKiosk(){
+  if (!can('manage')) return;
+  if (!confirm('Turn off check-in? Codes already shown will stop working.')) return;
+  const meta = Object.assign({}, db.meta || {});
+  delete meta.checkinSecret;
+  db.meta = meta;
+  kioskMode = false;
+  save();
+  render();
+}
+
+function openKiosk(){ if (can('manage')) { kioskMode = true; render(); } }
+
+function closeKiosk(){ kioskMode = false; clearInterval(kioskTimer); render(); }
+
+function renderKiosk(){
+  document.getElementById('app').innerHTML =
+    `<div class='card' style='text-align:center;max-width:520px;margin:20px auto'><h2>Check-in kiosk</h2>` +
+    `<p class='muted'>Scan this code with your phone to mark Work from office for today. The code changes every 5 minutes.</p>` +
+    `<div id='kioskQr' style='display:inline-block;background:#ffffff;padding:14px;border-radius:10px'></div>` +
+    `<div class='row' style='justify-content:center;margin-top:12px'><button class='btn ghost' onclick='closeKiosk()'>Exit kiosk</button></div></div>`;
+  refreshKiosk();
+  clearInterval(kioskTimer);
+  kioskTimer = setInterval(refreshKiosk, 30000);
+}
+
+async function checkinToken(secret, bucket){
+  return (await sha(secret + ':' + bucket)).slice(0, 12);
+}
+
+async function refreshKiosk(){
+  if (!kioskMode || !db.meta || !db.meta.checkinSecret) return;
+  const bucket = Math.floor(Date.now() / CHECKIN_BUCKET_MS);
+  const token = await checkinToken(db.meta.checkinSecret, bucket);
+  const el = document.getElementById('kioskQr');
+  if (!el || !window.QRCode) return;
+  el.innerHTML = '';
+  const base = window.location.href.split('?')[0];
+  new QRCode(el, {text: base + '?checkin=' + token, width: 320, height: 320, correctLevel: QRCode.CorrectLevel.M});
+}
+
+async function processCheckin(){
+  const token = pendingCheckin;
+  pendingCheckin = null;
+  if (!session) return;
+  if (!session.empId) { alert('Your account is not linked to an employee record, so you cannot check in.'); return; }
+  if (!db.meta || !db.meta.checkinSecret) { alert('Check-in is not turned on.'); return; }
+  const b = Math.floor(Date.now() / CHECKIN_BUCKET_MS);
+  let valid = false;
+  for (const bucket of [b, b - 1]) {
+    if (await checkinToken(db.meta.checkinSecret, bucket) === token) { valid = true; break; }
+  }
+  if (!valid) { alert('This code has expired. Scan the code currently on the kiosk screen.'); return; }
+  const d = todayStr();
+  db.records[d] = db.records[d] || {};
+  db.records[d][session.empId] = 'O';
+  save();
+  alert('Checked in: marked Work from office for today.');
+  render();
+}
+
 /* ---------- Render ---------- */
 function render(){
   syncMinWfo();
   renderHeader();
   if (!session) { renderAuth(); return; }
+  if (pendingCheckin) processCheckin();
+  if (kioskMode && can('manage')) { nav(); renderKiosk(); return; }
   nav();
   if (tab === 'daily') { viewDaily(); addHolidayPanel(); }
   else if (tab === 'dash') viewDash();
@@ -1861,6 +2160,10 @@ function render(){
 
 load();
 render();
+bootShared();
+const checkinParam = new URLSearchParams(window.location.search).get('checkin');
+if (checkinParam) { pendingCheckin = checkinParam; render(); }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pullShared(false); });
 </script>
 </body>
 </html>
